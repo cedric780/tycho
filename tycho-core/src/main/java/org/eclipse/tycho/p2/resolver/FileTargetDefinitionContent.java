@@ -158,7 +158,12 @@ public class FileTargetDefinitionContent implements TargetDefinitionContent {
                     subMonitor.subTask("Reading " + name);
                     try {
                         BundleDescription bundleDescription = BundlesAction.createBundleDescription(bundleLocation);
-                        if (bundleDescription != null) {
+                        if (bundleDescription != null ) {
+                            if ( bundleDescription.getSymbolicName() == null || bundleDescription.getVersion() == null) {
+                                // TODO log a warning about ignored non OSGI jar
+                                continue;
+                            }
+                            
                             IArtifactKey key = BundlesAction.createBundleArtifactKey(
                                     bundleDescription.getSymbolicName(), bundleDescription.getVersion().toString());
                             consumer.accept(FileArtifactRepository.forFile(bundleLocation, key),
