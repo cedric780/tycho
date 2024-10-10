@@ -21,12 +21,19 @@ import org.codehaus.plexus.component.annotations.Component;
 import org.codehaus.plexus.component.annotations.Requirement;
 import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
 import org.codehaus.plexus.logging.Logger;
+import org.eclipse.core.runtime.IStatus;
+import org.eclipse.equinox.internal.p2.artifact.repository.MirrorSelector;
 import org.eclipse.equinox.p2.core.IProvisioningAgent;
 import org.eclipse.equinox.p2.core.spi.IAgentServiceFactory;
 import org.eclipse.sisu.equinox.EquinoxServiceFactory;
+import org.eclipse.tycho.helper.MavenPropertyHelper;
 
 @Component(role = IProvisioningAgent.class)
 public class DefaultProvisioningAgent implements IProvisioningAgent {
+
+	static {
+		MirrorSelector.MIRROR_PARSE_ERROR_LEVEL = IStatus.INFO;
+	}
 
 	@Requirement
 	private Logger log;
@@ -39,6 +46,9 @@ public class DefaultProvisioningAgent implements IProvisioningAgent {
 
 	@Requirement
 	Map<String, IAgentServiceFactory> agentFactories;
+
+	@Requirement
+	MavenPropertyHelper propertyHelper;
 
 	private Map<String, Supplier<Object>> agentServices = new ConcurrentHashMap<>();
 
@@ -105,6 +115,16 @@ public class DefaultProvisioningAgent implements IProvisioningAgent {
 		if (agent != null) {
 			agent.unregisterService(serviceName, service);
 		}
+	}
+
+	@Override
+	public String getProperty(String key, String defaultValue) {
+		return propertyHelper.getGlobalProperty(key, defaultValue);
+	}
+
+	@Override
+	public String getProperty(String key) {
+		return propertyHelper.getGlobalProperty(key);
 	}
 
 	private static final class LazyAgentServiceFactory implements Supplier<Object> {

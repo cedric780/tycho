@@ -44,6 +44,7 @@ import org.codehaus.plexus.compiler.CompilerOutputStyle;
 import org.codehaus.plexus.compiler.CompilerResult;
 import org.codehaus.plexus.component.annotations.Component;
 import org.codehaus.plexus.component.annotations.Requirement;
+import org.codehaus.plexus.logging.Logger;
 import org.codehaus.plexus.util.StringUtils;
 import org.codehaus.plexus.util.cli.CommandLineException;
 import org.codehaus.plexus.util.cli.CommandLineUtils;
@@ -83,6 +84,9 @@ public class JDTCompiler extends AbstractCompiler {
     @Requirement
     private JdkLibraryInfoProvider jdkLibInfoProvider;
 
+    @Requirement
+    private Logger logger;
+
     public JDTCompiler() {
         super(CompilerOutputStyle.ONE_OUTPUT_FILE_PER_INPUT_FILE, ".java", ".class", null);
     }
@@ -106,8 +110,11 @@ public class JDTCompiler extends AbstractCompiler {
         if (sourceFiles.length == 0) {
             return new CompilerResult();
         }
+        //even though order of java sources should not matter, it can make a difference sometimes (e.g. lamda numbering) see https://github.com/eclipse-jdt/eclipse.jdt.core/issues/1921
+        //so to have always the same arguments regardless of hash table ordering that is used internally by plexus compiler we sort the files simply by name
+        Arrays.sort(sourceFiles);
 
-        getLogger().info("Compiling " + sourceFiles.length + " " + "source file" + (sourceFiles.length == 1 ? "" : "s")
+        logger.info("Compiling " + sourceFiles.length + " " + "source file" + (sourceFiles.length == 1 ? "" : "s")
                 + " to " + destinationDir.getAbsolutePath() + " using " + COMPILER_NAME + "");
 
         Collection<Map.Entry<String, String>> customCompilerArgumentEntries = config
@@ -298,11 +305,11 @@ public class JDTCompiler extends AbstractCompiler {
             args.add(config.getTargetVersion());
         }
 
-        if (!suppressSource(config) && StringUtils.isEmpty(config.getSourceVersion())) {
+        if (StringUtils.isEmpty(config.getSourceVersion())) {
             // If omitted, later JDKs complain about a 1.1 target
             args.add("-source");
             args.add("1.3");
-        } else if (!suppressSource(config)) {
+        } else {
             args.add("-source");
             args.add(config.getSourceVersion());
         }
@@ -313,25 +320,17 @@ public class JDTCompiler extends AbstractCompiler {
                 args.add("--release");
                 args.add(config.getReleaseVersion());
             } else {
-                getLogger().debug("Custom java home and --release are incompatible, ignore --release="
+                logger.debug("Custom java home and --release are incompatible, ignore --release="
                         + config.getReleaseVersion() + " setting ");
             }
         }
 
-        if (!suppressEncoding(config) && !StringUtils.isEmpty(config.getSourceEncoding())) {
+        if (!StringUtils.isEmpty(config.getSourceEncoding())) {
             args.add("-encoding");
             args.add(config.getSourceEncoding());
         }
 
         return args.toArray(new String[args.size()]);
-    }
-
-    private static boolean suppressSource(CompilerConfiguration config) {
-        return "1.3".equals(config.getCompilerVersion());
-    }
-
-    private static boolean suppressEncoding(CompilerConfiguration config) {
-        return "1.3".equals(config.getCompilerVersion());
     }
 
     /**
@@ -415,12 +414,12 @@ public class JDTCompiler extends AbstractCompiler {
                 addToCompilerArgumentsIfNotSet("--system", custom.javaHome, jdtCompilerArgs);
             }
         }
-        getLogger().debug("JDT compiler args: " + jdtCompilerArgs);
+        logger.debug("JDT compiler args: " + jdtCompilerArgs);
         boolean success = compiler.compile(jdtCompilerArgs.toArray(new String[0]));
 
         try {
             String output = err.toString();
-            getLogger().debug("Original compiler output: " + output);
+            logger.debug("Original compiler output: " + output);
             messages = parseModernStream(new BufferedReader(new StringReader(output)));
         } catch (IOException e) {
             throw new RuntimeException(e);

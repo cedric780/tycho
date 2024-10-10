@@ -47,8 +47,8 @@ import org.apache.maven.repository.RepositorySystem;
 import org.eclipse.aether.artifact.Artifact;
 import org.eclipse.aether.artifact.DefaultArtifact;
 import org.eclipse.aether.graph.DependencyNode;
-import org.eclipse.aether.impl.SyncContextFactory;
 import org.eclipse.aether.repository.RemoteRepository;
+import org.eclipse.aether.spi.synccontext.SyncContextFactory;
 import org.eclipse.equinox.internal.p2.publisher.eclipse.FeatureParser;
 import org.eclipse.equinox.p2.core.IProvisioningAgent;
 import org.eclipse.equinox.p2.metadata.IArtifactKey;
@@ -57,7 +57,6 @@ import org.eclipse.equinox.p2.metadata.VersionedId;
 import org.eclipse.equinox.p2.publisher.IPublisherInfo;
 import org.eclipse.equinox.p2.publisher.PublisherInfo;
 import org.eclipse.equinox.p2.publisher.actions.IPropertyAdvice;
-import org.eclipse.equinox.p2.publisher.eclipse.BundlesAction;
 import org.eclipse.equinox.p2.publisher.eclipse.Feature;
 import org.eclipse.equinox.p2.repository.artifact.IArtifactDescriptor;
 import org.eclipse.equinox.p2.repository.artifact.IArtifactRepository;
@@ -85,6 +84,7 @@ import org.eclipse.tycho.p2.resolver.FeaturePublisher;
 import org.eclipse.tycho.p2.resolver.WrappedArtifact;
 import org.eclipse.tycho.p2maven.advices.MavenChecksumAdvice;
 import org.eclipse.tycho.p2maven.advices.MavenPropertiesAdvice;
+import org.eclipse.tycho.p2maven.tmp.BundlesAction;
 import org.eclipse.tycho.targetplatform.TargetDefinition.BNDInstructions;
 import org.eclipse.tycho.targetplatform.TargetDefinition.MavenDependency;
 import org.eclipse.tycho.targetplatform.TargetDefinition.MavenGAVLocation;
@@ -350,7 +350,7 @@ public class MavenTargetDefinitionContent implements TargetDefinitionContent {
                     throw new TargetDefinitionResolutionException("feature generation failed!", e);
                 }
             }
-            FeaturePublisher.publishFeatures(features, repositoryContent::put, logger);
+            FeaturePublisher.publishFeatures(features, repositoryContent::put, artifactRepository, logger);
         }
     }
 
@@ -396,7 +396,7 @@ public class MavenTargetDefinitionContent implements TargetDefinitionContent {
     private IInstallableUnit publish(BundleDescription bundleDescription, File bundleLocation, IPropertyAdvice advice) {
         IArtifactKey key = BundlesAction.createBundleArtifactKey(bundleDescription.getSymbolicName(),
                 bundleDescription.getVersion().toString());
-        IArtifactDescriptor descriptor = FileArtifactRepository.forFile(bundleLocation, key);
+        IArtifactDescriptor descriptor = FileArtifactRepository.forFile(bundleLocation, key, artifactRepository);
         PublisherInfo publisherInfo = new PublisherInfo();
         publisherInfo.addAdvice(advice);
         publisherInfo.addAdvice(new MavenChecksumAdvice(bundleLocation));

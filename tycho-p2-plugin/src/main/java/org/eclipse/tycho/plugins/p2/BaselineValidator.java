@@ -26,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.reflect.MethodUtils;
@@ -41,9 +42,11 @@ import org.eclipse.tycho.TychoConstants;
 import org.eclipse.tycho.artifactcomparator.ArtifactComparator;
 import org.eclipse.tycho.artifactcomparator.ArtifactComparator.ComparisonData;
 import org.eclipse.tycho.artifactcomparator.ArtifactDelta;
+import org.eclipse.tycho.core.EcJLogFileEnhancer;
 import org.eclipse.tycho.core.osgitools.BaselineService;
 import org.eclipse.tycho.core.osgitools.DefaultReactorProject;
 import org.eclipse.tycho.p2.metadata.IP2Artifact;
+import org.eclipse.tycho.zipcomparator.internal.ClassfileComparator.ClassfileArtifactDelta;
 import org.eclipse.tycho.zipcomparator.internal.CompoundArtifactDelta;
 import org.eclipse.tycho.zipcomparator.internal.SimpleArtifactDelta;
 
@@ -60,6 +63,11 @@ public class BaselineValidator {
         public String getDetailedMessage() {
             return getMessage();
         }
+
+        @Override
+        public void writeDetails(File destination) throws IOException {
+
+        }
     }
 
     @Requirement
@@ -73,7 +81,7 @@ public class BaselineValidator {
 
     public Map<String, IP2Artifact> validateAndReplace(MavenProject project, ComparisonData data,
             Map<String, IP2Artifact> reactorMetadata, List<Repository> baselineRepositories, BaselineMode baselineMode,
-            BaselineReplace baselineReplace) throws IOException, MojoExecutionException {
+            BaselineReplace baselineReplace, EcJLogFileEnhancer enhancer) throws IOException, MojoExecutionException {
 
         Map<String, IP2Artifact> result = reactorMetadata;
 
@@ -97,14 +105,17 @@ public class BaselineValidator {
                         File logdir = new File(project.getBuild().getDirectory(), "artifactcomparison");
                         log.info("Artifact comparison detailed log directory " + logdir.getAbsolutePath());
                         for (Map.Entry<String, ArtifactDelta> classifier : delta.getMembers().entrySet()) {
-                            if (classifier.getValue() instanceof CompoundArtifactDelta compoundDelta) {
-                                compoundDelta.writeDetails(new File(logdir, classifier.getKey()));
-                            }
+                            classifier.getValue().writeDetails(new File(logdir, classifier.getKey()));
                         }
                     }
-                    if (baselineMode == fail || (baselineMode == failCommon && !isMissingOnlyDelta(delta))) {
+                    boolean shouldFail = shouldFail(baselineMode, delta);
+                    if (enhancer != null) {
+                        enhanceLogWithClassDiffs(delta, enhancer,
+                                shouldFail ? EcJLogFileEnhancer.SEVERITY_ERROR : EcJLogFileEnhancer.SEVERITY_WARNING);
+                    }
+                    if (shouldFail) {
                         throw new MojoExecutionException(delta.getDetailedMessage());
-                    } else {
+                    } else if (shouldWarn(baselineMode, delta)) {
                         log.warn(project.toString() + ": " + delta.getDetailedMessage());
                     }
                 }
@@ -189,13 +200,42 @@ public class BaselineValidator {
                     }
                 }
             } else {
-                log.info("No baseline version " + project);
+                log.info("No baseline version " + project.getId());
             }
         }
         return result;
     }
 
-    private boolean isMissingOnlyDelta(ArtifactDelta delta) {
+    private AtomicInteger logId = new AtomicInteger((int) System.currentTimeMillis());
+
+    private void enhanceLogWithClassDiffs(CompoundArtifactDelta compoundDelta, EcJLogFileEnhancer enhancer,
+            String serv) {
+        for (Entry<String, ArtifactDelta> entry : compoundDelta.getMembers().entrySet()) {
+            ArtifactDelta childDelta = entry.getValue();
+            if (childDelta instanceof ClassfileArtifactDelta) {
+                String key = entry.getKey();
+                //TODO it would be good if we can gather the line information from the classfile where the first diff is found...
+                enhancer.sources().filter(source -> source.hasClass(key)).findFirst()
+                        .ifPresent(source -> source.addProblem(serv, -1, -1, -1, 99999, logId.incrementAndGet(),
+                                "baseline and build for " + key + " have different contents"));
+            } else if (childDelta instanceof CompoundArtifactDelta c) {
+                enhanceLogWithClassDiffs(c, enhancer, serv);
+            }
+        }
+    }
+
+    private static boolean shouldFail(BaselineMode baselineMode, CompoundArtifactDelta delta) {
+        return baselineMode == fail || (baselineMode == failCommon && !isMissingOnlyDelta(delta));
+    }
+
+    private static boolean shouldWarn(BaselineMode baselineMode, CompoundArtifactDelta delta) {
+        if (baselineMode == BaselineMode.warnCommon) {
+            return !isMissingOnlyDelta(delta);
+        }
+        return true;
+    }
+
+    private static boolean isMissingOnlyDelta(ArtifactDelta delta) {
         if (delta instanceof MissingArtifactDelta) {
             return true;
         }

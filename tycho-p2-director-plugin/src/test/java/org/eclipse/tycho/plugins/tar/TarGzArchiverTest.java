@@ -204,16 +204,13 @@ public class TarGzArchiverTest {
     }
 
     private Map<String, TarArchiveEntry> getTarEntries() throws IOException, FileNotFoundException {
-        TarArchiveInputStream tarStream = new TarArchiveInputStream(
-                new GzipCompressorInputStream(new FileInputStream(tarGzArchive)));
         Map<String, TarArchiveEntry> entries = new HashMap<>();
-        try {
+        try (TarArchiveInputStream tarStream = new TarArchiveInputStream(
+                new GzipCompressorInputStream(new FileInputStream(tarGzArchive)))) {
             TarArchiveEntry tarEntry = null;
-            while ((tarEntry = tarStream.getNextTarEntry()) != null) {
+            while ((tarEntry = tarStream.getNextEntry()) != null) {
                 entries.put(tarEntry.getName(), tarEntry);
             }
-        } finally {
-            tarStream.close();
         }
         return entries;
     }
@@ -222,7 +219,7 @@ public class TarGzArchiverTest {
         try (TarArchiveInputStream tarStream = new TarArchiveInputStream(
                 new GzipCompressorInputStream(new FileInputStream(tarGzArchive)))) {
             TarArchiveEntry tarEntry = null;
-            while ((tarEntry = tarStream.getNextTarEntry()) != null) {
+            while ((tarEntry = tarStream.getNextEntry()) != null) {
                 if (name.equals(tarEntry.getName())) {
                     ByteArrayOutputStream baos = new ByteArrayOutputStream();
                     tarStream.transferTo(baos);

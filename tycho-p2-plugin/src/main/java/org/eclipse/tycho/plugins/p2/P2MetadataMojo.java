@@ -13,16 +13,11 @@
 package org.eclipse.tycho.plugins.p2;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Properties;
 import java.util.Set;
 
 import org.apache.maven.artifact.Artifact;
@@ -36,17 +31,15 @@ import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.MavenProjectHelper;
 import org.eclipse.equinox.p2.core.IProvisioningAgent;
 import org.eclipse.equinox.p2.metadata.IInstallableUnit;
-import org.eclipse.tycho.ArtifactType;
-import org.eclipse.tycho.IArtifactFacade;
 import org.eclipse.tycho.IDependencyMetadata.DependencyMetadataType;
 import org.eclipse.tycho.ReactorProject;
 import org.eclipse.tycho.TychoConstants;
 import org.eclipse.tycho.artifactcomparator.ArtifactComparator.ComparisonData;
+import org.eclipse.tycho.core.EcJLogFileEnhancer;
 import org.eclipse.tycho.core.osgitools.DefaultReactorProject;
 import org.eclipse.tycho.p2.metadata.IP2Artifact;
 import org.eclipse.tycho.p2.metadata.P2Generator;
-import org.eclipse.tycho.p2.metadata.PublisherOptions;
-import org.eclipse.tycho.p2resolver.ArtifactFacade;
+import org.eclipse.tycho.p2.metadata.P2Generator.FileInfo;
 
 @Mojo(name = "p2-metadata", threadSafe = true)
 public class P2MetadataMojo extends AbstractMojo {
@@ -151,6 +144,16 @@ public class P2MetadataMojo extends AbstractMojo {
     @Component
     private IProvisioningAgent agent;
 
+    @Parameter(defaultValue = "false")
+    private boolean enhanceLogs;
+
+    /**
+     * If given a folder, enhances the ECJ compiler logs with class compare errors so it can be
+     * analyzed by tools understanding that format
+     */
+    @Parameter(defaultValue = "${project.build.directory}/compile-logs")
+    private File logDirectory;
+
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
         synchronized (LOCK) {
@@ -171,41 +174,32 @@ public class P2MetadataMojo extends AbstractMojo {
 
         agent.getService(Object.class); //needed to make checksum computation work see https://github.com/eclipse-equinox/p2/issues/214
 
-        File targetDir = new File(project.getBuild().getDirectory());
-
-        ArtifactFacade projectDefaultArtifact = new ArtifactFacade(project.getArtifact());
-
         try {
-            List<IArtifactFacade> artifacts = new ArrayList<>();
-
-            artifacts.add(projectDefaultArtifact);
-
-            for (Artifact attachedArtifact : project.getAttachedArtifacts()) {
-                if (attachedArtifact.getFile() != null && (attachedArtifact.getFile().getName().endsWith(".jar")
-                        || (attachedArtifact.getFile().getName().endsWith(".zip")
-                                && project.getPackaging().equals(ArtifactType.TYPE_INSTALLABLE_UNIT)))) {
-                    artifacts.add(new ArtifactFacade(attachedArtifact));
-                }
-            }
-
-            PublisherOptions options = new PublisherOptions();
-            options.setGenerateDownloadStats(generateDownloadStatsProperty);
-            options.setGenerateChecksums(generateChecksums);
-            Map<String, IP2Artifact> generatedMetadata = p2generator.generateMetadata(artifacts, options, targetDir);
+            Map<String, IP2Artifact> generatedMetadata = p2generator.generateMetadata(project,
+                    generateDownloadStatsProperty, generateChecksums);
 
             if (baselineMode != BaselineMode.disable) {
                 ComparisonData data = new ComparisonData(ignoredPatterns, writeComparatorDelta);
-                generatedMetadata = baselineValidator.validateAndReplace(project, data, generatedMetadata,
-                        baselineRepositories, baselineMode, baselineReplace);
+                if (enhanceLogs && logDirectory != null && logDirectory.isDirectory()) {
+                    try {
+                        try (EcJLogFileEnhancer enhancer = EcJLogFileEnhancer.create(logDirectory)) {
+                            generatedMetadata = baselineValidator.validateAndReplace(project, data, generatedMetadata,
+                                    baselineRepositories, baselineMode, baselineReplace, enhancer);
+                        }
+                    } catch (IOException e) {
+                        getLog().warn("Can't enhance logs in directory " + logDirectory);
+                    }
+                } else {
+                    generatedMetadata = baselineValidator.validateAndReplace(project, data, generatedMetadata,
+                            baselineRepositories, baselineMode, baselineReplace, null);
+                }
             }
 
-            File contentsXml = new File(targetDir, TychoConstants.FILE_NAME_P2_METADATA);
-            File artifactsXml = new File(targetDir, TychoConstants.FILE_NAME_P2_ARTIFACTS);
-            p2generator.persistMetadata(generatedMetadata, contentsXml, artifactsXml);
-            projectHelper.attachArtifact(project, TychoConstants.EXTENSION_P2_METADATA,
-                    TychoConstants.CLASSIFIER_P2_METADATA, contentsXml);
-            projectHelper.attachArtifact(project, TychoConstants.EXTENSION_P2_ARTIFACTS,
-                    TychoConstants.CLASSIFIER_P2_ARTIFACTS, artifactsXml);
+            FileInfo info = p2generator.persistMetadata(generatedMetadata, project);
+            attachArtifact(project, TychoConstants.EXTENSION_P2_METADATA, TychoConstants.CLASSIFIER_P2_METADATA,
+                    info.metadata());
+            attachArtifact(project, TychoConstants.EXTENSION_P2_ARTIFACTS, TychoConstants.CLASSIFIER_P2_ARTIFACTS,
+                    info.artifacts());
 
             ReactorProject reactorProject = DefaultReactorProject.adapt(project);
 
@@ -223,12 +217,25 @@ public class P2MetadataMojo extends AbstractMojo {
             // TODO 353889 distinguish between dependency resolution seed units ("primary") and other units of the project
             reactorProject.setDependencyMetadata(DependencyMetadataType.SEED, installableUnits);
             reactorProject.setDependencyMetadata(DependencyMetadataType.RESOLVE, Collections.emptySet());
+            p2generator.writeArtifactLocations(project);
         } catch (IOException e) {
             throw new MojoExecutionException("Could not generate P2 metadata", e);
         }
+    }
 
-        File localArtifactsFile = new File(project.getBuild().getDirectory(), TychoConstants.FILE_NAME_LOCAL_ARTIFACTS);
-        writeArtifactLocations(localArtifactsFile, getAllProjectArtifacts(project));
+    /**
+     * Performs an add or replace of the specified artifact, even though javadoc of
+     * {@link MavenProjectHelper} claims it can replace artifacts that generates a warning in recent
+     * maven versions.
+     */
+    private void attachArtifact(MavenProject project, String type, String classifier, File file) {
+        for (Artifact artifact : project.getAttachedArtifacts()) {
+            if (classifier.equals(artifact.getClassifier()) && type.equals(artifact.getType())) {
+                artifact.setFile(file);
+                return;
+            }
+        }
+        projectHelper.attachArtifact(project, type, classifier, file);
     }
 
     private static boolean hasAttachedArtifact(MavenProject project, String classifier) {
@@ -249,43 +256,4 @@ public class P2MetadataMojo extends AbstractMojo {
         return fileName.substring(separator + 1);
     }
 
-    /**
-     * Returns a map from classifiers to artifact files of the given project. The classifier
-     * <code>null</code> is mapped to the project's main artifact.
-     */
-    private static Map<String, File> getAllProjectArtifacts(MavenProject project) {
-        Map<String, File> artifacts = new HashMap<>();
-        Artifact mainArtifact = project.getArtifact();
-        if (mainArtifact != null) {
-            artifacts.put(null, mainArtifact.getFile());
-        }
-        for (Artifact attachedArtifact : project.getAttachedArtifacts()) {
-            artifacts.put(attachedArtifact.getClassifier(), attachedArtifact.getFile());
-        }
-        return artifacts;
-    }
-
-    static void writeArtifactLocations(File outputFile, Map<String, File> artifactLocations)
-            throws MojoExecutionException {
-        Properties outputProperties = new Properties();
-
-        for (Entry<String, File> entry : artifactLocations.entrySet()) {
-            if (entry.getKey() == null) {
-                outputProperties.put(TychoConstants.KEY_ARTIFACT_MAIN, entry.getValue().getAbsolutePath());
-            } else {
-                outputProperties.put(TychoConstants.KEY_ARTIFACT_ATTACHED + entry.getKey(),
-                        entry.getValue().getAbsolutePath());
-            }
-        }
-
-        writeProperties(outputProperties, outputFile);
-    }
-
-    private static void writeProperties(Properties properties, File outputFile) throws MojoExecutionException {
-        try (FileOutputStream outputStream = new FileOutputStream(outputFile)) {
-            properties.store(outputStream, null);
-        } catch (IOException e) {
-            throw new MojoExecutionException("I/O exception while writing " + outputFile, e);
-        }
-    }
 }

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
- - Copyright (c) 2008, 2022 Sonatype Inc. and others.
+ - Copyright (c) 2008, 2024 Sonatype Inc. and others.
  - All rights reserved. This program and the accompanying materials
  - are made available under the terms of the Eclipse Public License v1.0
  - which accompanies this distribution, and is available at
@@ -160,17 +160,17 @@
 		<dependency>
 			<groupId>org.junit.jupiter</groupId>
 			<artifactId>junit-jupiter</artifactId>
-			<version>5.10.0</version>
+			<version>5.11.2</version>
 		</dependency>
 		<dependency>
 			<groupId>org.junit.vintage</groupId>
 			<artifactId>junit-vintage-engine</artifactId>
-			<version>5.10.0</version>
+			<version>5.11.2</version>
 		</dependency>
 		<dependency>
 			<groupId>org.junit.platform</groupId>
 			<artifactId>junit-platform-launcher</artifactId>
-			<version>1.9.3</version>
+			<version>1.11.2</version>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
@@ -187,14 +187,13 @@
 		<dependency>
 			<groupId>org.eclipse.platform</groupId>
 			<artifactId>org.eclipse.jface</artifactId>
-			<version>3.30.0</version>
+			<version>3.35.0</version>
 			<scope>test</scope>
 		</dependency>
 
 		<dependency>
 			<groupId>org.eclipse.jdt</groupId>
 			<artifactId>org.eclipse.jdt.core</artifactId>
-			<version>3.34.0</version>
 			<scope>test</scope>
 		</dependency>
 		<!-- update site tests -->
@@ -211,8 +210,14 @@
 		<dependency>
 			<groupId>org.mockftpserver</groupId>
 			<artifactId>MockFtpServer</artifactId>
-			<version>3.1.0</version>
+			<version>3.2.0</version>
 			<scope>test</scope>
+		</dependency>
+		<!-- sbom tests -->
+		<dependency>
+			<groupId>org.cyclonedx</groupId>
+			<artifactId>cyclonedx-core-java</artifactId>
+			<version>9.0.5</version>
 		</dependency>
 
 		<!-- artifacts to be tested -->

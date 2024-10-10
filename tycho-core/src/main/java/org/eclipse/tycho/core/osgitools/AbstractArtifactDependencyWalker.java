@@ -28,7 +28,6 @@ import org.eclipse.tycho.ArtifactDescriptor;
 import org.eclipse.tycho.ArtifactKey;
 import org.eclipse.tycho.ArtifactType;
 import org.eclipse.tycho.DependencyArtifacts;
-import org.eclipse.tycho.PlatformPropertiesUtils;
 import org.eclipse.tycho.ReactorProject;
 import org.eclipse.tycho.TargetEnvironment;
 import org.eclipse.tycho.core.ArtifactDependencyVisitor;
@@ -39,7 +38,6 @@ import org.eclipse.tycho.model.FeatureRef;
 import org.eclipse.tycho.model.PluginRef;
 import org.eclipse.tycho.model.ProductConfiguration;
 import org.eclipse.tycho.model.ProductConfiguration.ProductType;
-import org.eclipse.tycho.model.UpdateSite;
 
 public abstract class AbstractArtifactDependencyWalker implements ArtifactDependencyWalker {
 
@@ -54,15 +52,6 @@ public abstract class AbstractArtifactDependencyWalker implements ArtifactDepend
     protected AbstractArtifactDependencyWalker(DependencyArtifacts artifacts, TargetEnvironment[] environments) {
         this.artifacts = artifacts;
         this.environments = environments;
-    }
-
-    @Override
-    public void traverseUpdateSite(UpdateSite site, ArtifactDependencyVisitor visitor) {
-        WalkbackPath visited = new WalkbackPath();
-
-        for (FeatureRef ref : site.getFeatures()) {
-            traverseFeature(ref, visitor, visited);
-        }
     }
 
     @Override
@@ -111,11 +100,6 @@ public abstract class AbstractArtifactDependencyWalker implements ArtifactDepend
         return null;
     }
 
-    @Override
-    public void traverseProduct(ProductConfiguration product, ArtifactDependencyVisitor visitor) {
-        traverseProduct(product, visitor, new WalkbackPath());
-    }
-
     protected void traverseProduct(ProductConfiguration product, ArtifactDependencyVisitor visitor,
             WalkbackPath visited) {
         ProductType type = product.getType();
@@ -135,36 +119,6 @@ public abstract class AbstractArtifactDependencyWalker implements ArtifactDepend
             ArtifactKey key = artifact.getKey();
             if (ArtifactType.TYPE_ECLIPSE_PLUGIN.equals(key.getType())) {
                 bundles.add(key.getId());
-            }
-        }
-
-        if (environments != null && product.includeLaunchers()) {
-            for (TargetEnvironment environment : environments) {
-                String os = environment.getOs();
-                String ws = environment.getWs();
-                String arch = environment.getArch();
-
-                String id;
-
-                // for Mac OS X there is no org.eclipse.equinox.launcher.carbon.macosx.x86 or org.eclipse.equinox.launcher.carbon.macosx.ppc folder,
-                // only a org.eclipse.equinox.launcher.carbon.macosx folder.
-                // see https://jira.codehaus.org/browse/MNGECLIPSE-1075
-                if (PlatformPropertiesUtils.OS_MACOSX.equals(os) && (PlatformPropertiesUtils.ARCH_X86.equals(arch)
-                        || PlatformPropertiesUtils.ARCH_PPC.equals(arch))) {
-                    id = "org.eclipse.equinox.launcher." + ws + "." + os;
-                } else {
-                    id = "org.eclipse.equinox.launcher." + ws + "." + os + "." + arch;
-                }
-
-                if (!bundles.contains(id)) {
-                    PluginRef ref = new PluginRef("plugin");
-                    ref.setId(id);
-                    ref.setOs(os);
-                    ref.setWs(ws);
-                    ref.setArch(arch);
-                    ref.setUnpack(true);
-                    traversePlugin(ref, visitor, visited);
-                }
             }
         }
     }

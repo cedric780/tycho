@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2008, 2022 Sonatype Inc. and others.
+ * Copyright (c) 2008, 2024 Sonatype Inc. and others.
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
  * which accompanies this distribution, and is available at
@@ -155,6 +155,13 @@ public class PackagePluginMojo extends AbstractTychoPackagingMojo {
 	@Parameter(defaultValue = "true")
 	private boolean deriveHeaderFromSource;
 
+	/**
+	 * If {@code true}, it is checked that the explicitly declared OSGi service
+	 * component files exist.
+	 */
+	@Parameter(defaultValue = "true")
+	private boolean checkServiceComponentFilesExist = true;
+
 	@Component
 	private SourceReferenceComputer soureReferenceComputer;
 
@@ -172,7 +179,10 @@ public class PackagePluginMojo extends AbstractTychoPackagingMojo {
 
 	@Override
 	public void execute() throws MojoExecutionException {
-
+		if (skip) {
+			getLog().info("skip packaging");
+			return;
+		}
 		Optional<EclipsePluginProject> pde = projectManager.getTychoProject(project)
 				.filter(BundleProject.class::isInstance)
 				.map(BundleProject.class::cast)
@@ -201,7 +211,11 @@ public class PackagePluginMojo extends AbstractTychoPackagingMojo {
 			File jarFile = new File(project.getBasedir(), jarName);
 			JarArchiver archiver = new JarArchiver();
 			archiver.setDestFile(jarFile);
-			archiver.addDirectory(jar.getOutputDirectory());
+			File outputDirectory = jar.getOutputDirectory();
+			if (!outputDirectory.mkdirs() && !outputDirectory.exists()) {
+				throw new IOException("creating output directory " + outputDirectory.getAbsolutePath() + " failed");
+			}
+			archiver.addDirectory(outputDirectory);
 			if (customManifest != null) {
 				for (File sourceFolder : jar.getSourceFolders()) {
 					File manifestFile = new File(sourceFolder, customManifest);
@@ -255,7 +269,7 @@ public class PackagePluginMojo extends AbstractTychoPackagingMojo {
 			checkBinIncludesExist(buildProperties, binIncludesIgnoredForValidation.toArray(new String[0]));
 			// 4. check DS files exits...
 			TychoProject facet = getTychoProjectFacet();
-			if (facet instanceof OsgiBundleProject bundleProject) {
+			if (checkServiceComponentFilesExist && facet instanceof OsgiBundleProject bundleProject) {
 				String components = bundleProject.getManifestValue("Service-Component", project);
 				if (components != null) {
 					if (components.contains("*")) {

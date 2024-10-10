@@ -27,7 +27,6 @@ import org.eclipse.equinox.p2.metadata.IArtifactKey;
 import org.eclipse.equinox.p2.metadata.IInstallableUnit;
 import org.eclipse.equinox.p2.publisher.IPublisherInfo;
 import org.eclipse.equinox.p2.publisher.PublisherInfo;
-import org.eclipse.equinox.p2.publisher.eclipse.BundlesAction;
 import org.eclipse.equinox.p2.publisher.eclipse.Feature;
 import org.eclipse.equinox.p2.query.IQuery;
 import org.eclipse.equinox.p2.query.IQueryResult;
@@ -37,6 +36,7 @@ import org.eclipse.equinox.p2.repository.metadata.IMetadataRepository;
 import org.eclipse.osgi.service.resolver.BundleDescription;
 import org.eclipse.tycho.core.resolver.target.FileArtifactRepository;
 import org.eclipse.tycho.core.resolver.target.SupplierMetadataRepository;
+import org.eclipse.tycho.p2maven.tmp.BundlesAction;
 import org.eclipse.tycho.targetplatform.TargetDefinitionContent;
 import org.eclipse.tycho.targetplatform.TargetDefinitionResolutionException;
 import org.osgi.framework.BundleException;
@@ -60,6 +60,7 @@ public class FileTargetDefinitionContent implements TargetDefinitionContent {
         artifactRepository.setLocation(location.toURI());
     }
 
+    @Override
     public IMetadataRepository getMetadataRepository() {
         preload(null);
         return metadataRepository;
@@ -84,14 +85,16 @@ public class FileTargetDefinitionContent implements TargetDefinitionContent {
             boolean hasPlugins = pluginsPath.isDirectory();
             boolean hasFeatures = featurePath.isDirectory();
             if (hasPlugins) {
-                readBundles(pluginsPath, repositoryContent::put, hasFeatures ? subMonitor.split(100) : subMonitor);
+                readBundles(pluginsPath, repositoryContent::put, hasFeatures ? subMonitor.split(100) : subMonitor,
+                        artifactRepository);
             }
             if (hasFeatures) {
-                readFeatures(featurePath, repositoryContent::put, hasPlugins ? subMonitor.split(100) : subMonitor);
+                readFeatures(featurePath, repositoryContent::put, artifactRepository,
+                        hasPlugins ? subMonitor.split(100) : subMonitor);
             }
             if (!hasFeatures && !hasPlugins) {
-                readBundles(location, repositoryContent::put, subMonitor.split(100));
-                readFeatures(location, repositoryContent::put, subMonitor.split(100));
+                readBundles(location, repositoryContent::put, subMonitor.split(100), artifactRepository);
+                readFeatures(location, repositoryContent::put, artifactRepository, subMonitor.split(100));
             }
         } catch (ResolverException e) {
             throw new TargetDefinitionResolutionException("resolving location " + location + " failed", e);
@@ -100,6 +103,7 @@ public class FileTargetDefinitionContent implements TargetDefinitionContent {
         loaded = true;
     }
 
+    @Override
     public IArtifactRepository getArtifactRepository() {
         preload(null);
         return artifactRepository;
@@ -110,7 +114,7 @@ public class FileTargetDefinitionContent implements TargetDefinitionContent {
     }
 
     private static void readFeatures(File path, BiConsumer<IArtifactDescriptor, IInstallableUnit> consumer,
-            IProgressMonitor monitor) throws ResolverException {
+            IArtifactRepository artifactRepository, IProgressMonitor monitor) {
         PublisherInfo publisherInfo = new PublisherInfo();
         publisherInfo.setArtifactOptions(IPublisherInfo.A_INDEX);
         if (path.isDirectory()) {
@@ -130,7 +134,7 @@ public class FileTargetDefinitionContent implements TargetDefinitionContent {
                     Feature feature = new FeatureParser().parse(featureLocation);
                     if (feature != null) {
                         feature.setLocation(featureLocation.getAbsolutePath());
-                        FeaturePublisher.publishFeatures(List.of(feature), consumer, null);
+                        FeaturePublisher.publishFeatures(List.of(feature), consumer, artifactRepository, null);
                     }
                     subMonitor.worked(1);
                 }
@@ -139,7 +143,7 @@ public class FileTargetDefinitionContent implements TargetDefinitionContent {
     }
 
     private static void readBundles(File path, BiConsumer<IArtifactDescriptor, IInstallableUnit> consumer,
-            IProgressMonitor monitor) throws ResolverException {
+            IProgressMonitor monitor, IArtifactRepository artifactRepository) throws ResolverException {
         PublisherInfo publisherInfo = new PublisherInfo();
         publisherInfo.setArtifactOptions(IPublisherInfo.A_INDEX);
         if (path.isDirectory()) {
@@ -166,7 +170,7 @@ public class FileTargetDefinitionContent implements TargetDefinitionContent {
                             
                             IArtifactKey key = BundlesAction.createBundleArtifactKey(
                                     bundleDescription.getSymbolicName(), bundleDescription.getVersion().toString());
-                            consumer.accept(FileArtifactRepository.forFile(bundleLocation, key),
+                            consumer.accept(FileArtifactRepository.forFile(bundleLocation, key, artifactRepository),
                                     BundlesAction.createBundleIU(bundleDescription, key, publisherInfo));
                         }
                     } catch (BundleException | IOException | RuntimeException e) {

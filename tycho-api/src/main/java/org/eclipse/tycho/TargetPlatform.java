@@ -35,6 +35,11 @@ public interface TargetPlatform {
     String FINAL_TARGET_PLATFORM_KEY = "org.eclipse.tycho.core.TychoConstants/targetPlatform";
 
     /**
+     * Key under which the preliminary target platform is stored in the reactor project instances.
+     */
+    String PRELIMINARY_TARGET_PLATFORM_KEY = "org.eclipse.tycho.core.TychoConstants/dependencyOnlyTargetPlatform";
+
+    /**
      * Returns an artifact of the given type, id and matching version. The version reference string
      * matches versions according to the following rules:
      * <ul>
@@ -68,7 +73,7 @@ public interface TargetPlatform {
      * Returns the file system location of the given target platform artifact.
      * 
      * @return the location of the given artifact, or <code>null</code> if the artifact does not
-     *         exist in the target platform, or if the given <tt>ArtifactKey</tt> refers to an
+     *         exist in the target platform, or if the given <code>ArtifactKey</code> refers to an
      *         metadata-only "artifact" e.g. a product definition.
      */
     File getArtifactLocation(ArtifactKey artifact);
@@ -77,12 +82,11 @@ public interface TargetPlatform {
 
     default ResolvedArtifactKey resolvePackage(String packageName, String versionRef)
             throws DependencyResolutionException, IllegalArtifactReferenceException {
-        ArtifactKey packageJar = resolveArtifact(PublisherHelper.CAPABILITY_NS_JAVA_PACKAGE, packageName,
-                versionRef);
-        File location = getArtifactLocation(new DefaultArtifactKey(ArtifactType.TYPE_ECLIPSE_PLUGIN,
-                packageJar.getId(), packageJar.getVersion()));
-        return ResolvedArtifactKey.of(ArtifactType.TYPE_ECLIPSE_PLUGIN, packageJar.getId(),
-                packageJar.getVersion(), location);
+        ArtifactKey packageJar = resolveArtifact(PublisherHelper.CAPABILITY_NS_JAVA_PACKAGE, packageName, versionRef);
+        File location = getArtifactLocation(
+                new DefaultArtifactKey(ArtifactType.TYPE_ECLIPSE_PLUGIN, packageJar.getId(), packageJar.getVersion()));
+        return ResolvedArtifactKey.of(ArtifactType.TYPE_ECLIPSE_PLUGIN, packageJar.getId(), packageJar.getVersion(),
+                location);
     }
 
     /**

@@ -54,12 +54,13 @@ import org.eclipse.tycho.BuildPropertiesParser;
 import org.eclipse.tycho.PackagingType;
 import org.eclipse.tycho.TargetEnvironment;
 import org.eclipse.tycho.TargetPlatform;
+import org.eclipse.tycho.TychoConstants;
+import org.eclipse.tycho.core.TychoProjectManager;
 import org.eclipse.tycho.core.osgitools.DefaultReactorProject;
 import org.eclipse.tycho.core.resolver.P2ResolutionResult;
 import org.eclipse.tycho.core.resolver.P2ResolutionResult.Entry;
 import org.eclipse.tycho.core.resolver.P2Resolver;
 import org.eclipse.tycho.core.resolver.P2ResolverFactory;
-import org.eclipse.tycho.core.utils.TychoProjectUtils;
 import org.eclipse.tycho.model.Feature;
 import org.eclipse.tycho.model.FeatureRef;
 import org.eclipse.tycho.model.PluginRef;
@@ -224,6 +225,9 @@ public class SourceFeatureMojo extends AbstractMojo {
     @Component
     private Logger logger;
 
+    @Component
+    private TychoProjectManager projectManager;
+
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
         if (!PackagingType.TYPE_ECLIPSE_FEATURE.equals(project.getPackaging()) || skip) {
@@ -321,8 +325,8 @@ public class SourceFeatureMojo extends AbstractMojo {
 
         final Feature sourceFeature = createSourceFeatureSkeleton(feature, mergedSourceFeatureProps,
                 sourceTemplateProps);
-        fillReferences(sourceFeature, feature,
-                TychoProjectUtils.getTargetPlatform(DefaultReactorProject.adapt(project)));
+        fillReferences(sourceFeature, feature, projectManager.getTargetPlatform(project)
+                .orElseThrow(() -> new MojoExecutionException(TychoConstants.TYCHO_NOT_CONFIGURED + project)));
 
         Feature.write(sourceFeature, sourceFeatureXml, "  ");
         return sourceFeatureXml;
@@ -564,8 +568,6 @@ public class SourceFeatureMojo extends AbstractMojo {
         PluginRef sourceRef = new PluginRef("plugin");
         sourceRef.setId(sourceBundle.getId());
         sourceRef.setVersion(sourceBundle.getVersion());
-        sourceRef.setDownloadSize(0);
-        sourceRef.setInstallSize(0);
         if (pluginRef.getOs() != null) {
             sourceRef.setOs(pluginRef.getOs());
         }
@@ -575,8 +577,6 @@ public class SourceFeatureMojo extends AbstractMojo {
         if (pluginRef.getArch() != null) {
             sourceRef.setArch(pluginRef.getArch());
         }
-        sourceRef.setUnpack(false);
-
         sourceFeature.addPlugin(sourceRef);
     }
 
@@ -635,8 +635,8 @@ public class SourceFeatureMojo extends AbstractMojo {
     }
 
     /**
-     * @return A {@link FileSet} including files as configured by the <tt>src.includes</tt> and
-     *         <tt>src.excludes</tt> properties without the files that are always included
+     * @return A {@link FileSet} including files as configured by the <code>src.includes</code> and
+     *         <code>src.excludes</code> properties without the files that are always included
      *         automatically.
      */
     private FileSet getManuallyIncludedFiles(File basedir, BuildProperties buildProperties) {

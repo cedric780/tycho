@@ -13,13 +13,15 @@
 package org.eclipse.tycho.osgi.framework;
 
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import javax.inject.Inject;
 
 import org.apache.maven.SessionScoped;
 import org.apache.maven.execution.MavenSession;
+import org.apache.maven.project.MavenProject;
 import org.apache.maven.toolchain.ToolchainManager;
 import org.codehaus.plexus.component.annotations.Component;
 import org.codehaus.plexus.component.annotations.Requirement;
@@ -33,6 +35,7 @@ import org.eclipse.tycho.core.resolver.P2Resolver;
 import org.eclipse.tycho.core.resolver.P2ResolverFactory;
 import org.eclipse.tycho.core.resolver.shared.IncludeSourceMode;
 import org.eclipse.tycho.p2.target.facade.TargetPlatformConfigurationStub;
+import org.eclipse.tycho.p2.target.facade.TargetPlatformFactory;
 
 /**
  * Component that resolves all the bundles that make up an Eclipse Application to run from a given
@@ -42,19 +45,14 @@ import org.eclipse.tycho.p2.target.facade.TargetPlatformConfigurationStub;
 @SessionScoped
 public class EclipseApplicationFactory {
 
-    static final String BUNDLE_APP = "org.eclipse.equinox.app";
-
-    static final String BUNDLE_SCR = "org.apache.felix.scr";
-
-    static final String BUNDLE_CORE = "org.eclipse.core.runtime";
-
-    private static final String BUNDLE_LAUNCHER = "org.eclipse.equinox.launcher";
-
     @Requirement
     private ToolchainManager toolchainManager;
 
     @Requirement
     private P2ResolverFactory resolverFactory;
+
+    @Requirement
+    private TargetPlatformFactory platformFactory;
 
     @Requirement
     private Logger logger;
@@ -67,15 +65,18 @@ public class EclipseApplicationFactory {
     }
 
     public EclipseApplication createEclipseApplication(MavenRepositoryLocation repositoryLocation, String name) {
+        return createEclipseApplication(createTargetPlatform(List.of(repositoryLocation)), name);
+    }
+
+    public EclipseApplication createEclipseApplication(TargetPlatform targetPlatform, String name) {
         P2Resolver resolver = createResolver();
-        List<MavenRepositoryLocation> locations = List.of(repositoryLocation);
-        TargetPlatform targetPlatform = createTargetPlatform(locations);
-        EclipseApplication application = new EclipseApplication(name, resolver, targetPlatform, logger);
+        EclipseApplication application = new EclipseApplication(name, resolver, targetPlatform, logger, mavenSession
+                .getAllProjects().stream().collect(Collectors.toMap(MavenProject::getBasedir, Function.identity())));
         //add the bare minimum required ...
-        application.addBundle(BUNDLE_CORE);
-        application.addBundle(BUNDLE_SCR);
-        application.addBundle(BUNDLE_APP);
-        application.addBundle(BUNDLE_LAUNCHER);
+        application.addBundle(Bundles.BUNDLE_CORE);
+        application.addBundle(Bundles.BUNDLE_SCR);
+        application.addBundle(Bundles.BUNDLE_APP);
+        application.addBundle(Bundles.BUNDLE_LAUNCHER);
         return application;
     }
 
@@ -90,14 +91,16 @@ public class EclipseApplicationFactory {
         ExecutionEnvironmentConfiguration eeConfiguration = new ExecutionEnvironmentConfigurationImpl(logger, false,
                 toolchainManager, mavenSession);
         eeConfiguration.setProfileConfiguration("JavaSE-" + javaVersion, "tycho-eclipse-application-resolver");
-        TargetPlatform targetPlatform = resolverFactory.getTargetPlatformFactory().createTargetPlatform(tpConfiguration,
-                eeConfiguration, null);
+        TargetPlatform targetPlatform = platformFactory.createTargetPlatform(tpConfiguration, eeConfiguration, null);
         return targetPlatform;
     }
 
     public P2Resolver createResolver() {
-        P2Resolver resolver = resolverFactory
-                .createResolver(Collections.singletonList(TargetEnvironment.getRunningEnvironment()));
+        return createResolver(List.of(TargetEnvironment.getRunningEnvironment()));
+    }
+
+    public P2Resolver createResolver(Collection<TargetEnvironment> environments) {
+        P2Resolver resolver = resolverFactory.createResolver(environments);
         return resolver;
     }
 

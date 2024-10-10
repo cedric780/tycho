@@ -18,8 +18,10 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -45,15 +47,15 @@ import org.eclipse.tycho.core.TychoProject;
 import org.eclipse.tycho.core.maven.MavenArtifactFacade;
 import org.eclipse.tycho.core.resolver.shared.PomDependencies;
 import org.eclipse.tycho.p2.metadata.ReactorProjectFacade;
-import org.eclipse.tycho.p2.repository.QueryableCollection;
 import org.eclipse.tycho.p2.repository.RepositoryLayoutHelper;
 import org.eclipse.tycho.p2.resolver.WrappedArtifact;
 import org.eclipse.tycho.p2maven.InstallableUnitGenerator;
+import org.eclipse.tycho.p2tools.copiedfromp2.QueryableArray;
 
 class PomInstallableUnitStore implements IQueryable<IInstallableUnit> {
 
     private static final IQueryResult<IInstallableUnit> EMPTY_RESULT = new CollectionResult<>(Collections.emptyList());
-    private QueryableCollection collection;
+    private IQueryable<IInstallableUnit> collection;
     private TychoProject tychoProject;
     private ReactorProject reactorProject;
     private Map<IInstallableUnit, PomDependency> installableUnitLookUp = new HashMap<>();
@@ -200,7 +202,7 @@ class PomInstallableUnitStore implements IQueryable<IInstallableUnit> {
                     }
                 });
             }
-            collection = new QueryableCollection(installableUnitLookUp.keySet());
+            collection = new QueryableArray(installableUnitLookUp.keySet(), false);
         }
         return collection;
     }
@@ -221,10 +223,31 @@ class PomInstallableUnitStore implements IQueryable<IInstallableUnit> {
             MavenProject mavenProject = projectFacade.getReactorProject().adapt(MavenProject.class);
             if (mavenProject != null) {
                 return Stream.concat(Stream.of(mavenProject.getArtifact()),
-                        mavenProject.getAttachedArtifacts().stream());
+                        safeCopy(mavenProject.getAttachedArtifacts()).stream());
             }
         }
         return Stream.of(artifact);
+
+    }
+
+    private List<Artifact> safeCopy(List<Artifact> list) {
+        while (true) {
+            //in parallel execution mode it is possible that items are added to the attached artifacts what will throw ConcurrentModificationException so we must make a quite unusual copy here
+            //we can not only use one of the List.copyOf(), ArrayList(...) and so on e.g. they often just copy the data but a concurrent copy can lead to data corruption or null values
+            try {
+                List<Artifact> copyList = new ArrayList<>();
+                for (Iterator<Artifact> iterator = list.iterator(); iterator.hasNext();) {
+                    Artifact a = iterator.next();
+                    if (a != null) {
+                        copyList.add(a);
+                    }
+                }
+                return copyList;
+            } catch (ConcurrentModificationException e) {
+                //retry...
+                Thread.yield();
+            }
+        }
 
     }
 

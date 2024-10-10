@@ -1,51 +1,418 @@
 # Eclipse Tycho: Release notes
 
 This page describes the noteworthy improvements provided by each release of Eclipse Tycho.
+If you are reading this in the browser, then you can quickly jump to specific versions by using the rightmost button above the headline:
+![grafik](https://github.com/eclipse-tycho/tycho/assets/406876/7025e8cb-0cdb-4211-8239-fc01867923af)
 
 ## 5.0.0 (under development)
 
-### new tycho-repository-plugin
+## new `update-manifest` mojo
+
+It is recommended to use as the lower bound the dependency the code was
+compiled with to avoid using newer code from dependencies, but managing
+that manually can be a daunting task.
+
+There is now a new `tycho-version-bump:update-manifest` mojo that helps in calculate the
+lower bound and update the manifest accordingly.
+
+
+## support bumping maven target locations
+
+The `tycho-version-bump-plugin:update-target` now also supports bumping maven target locations to the latest version.
+
+### Support for new `includeJRE` flag when building products
+
+PDE recently added a new flag for the product to mark it to [include a JRE](https://github.com/eclipse-pde/eclipse.pde/pull/1075).
+This is now supported by Tycho. Activating this flag has the following effects:
+
+- The product gets a new requirement for a JustJ JRE.
+- The JustJ update site is automatically added to the `materialize-products` goal if such product is present.
+
+There is [a demo project](https://github.com/eclipse-tycho/tycho/tree/main/demo/justj/automaticInstall) which shows an example for a product using that flag and including a JRE that is suitable to launch the product automatically.
+
+### Support for CycloneDX Maven Plugin
+
+The `tycho-sbom` plugin can be added as a dependency to the [CycloneDX Maven plugin](https://cyclonedx.github.io/cyclonedx-maven-plugin/index.html),
+in order to handle the PURL creation of p2 artifacts:
+
+```xml
+<plugin>
+    <groupId>org.cyclonedx</groupId>
+    <artifactId>cyclonedx-maven-plugin</artifactId>
+    <dependencies>
+        <dependency>
+            <groupId>org.eclipse.tycho</groupId>
+            <artifactId>tycho-sbom</artifactId>
+            <version>${tycho-version}</version>
+        </dependency>
+    </dependencies>
+</plugin>
+```
+
+### Support for parallel execution of product assembly/archiving
+
+The mojos `materialize-products` and `archive-products` now support a new `<parallel>` parameter
+that enables the parallel assembly/packaging of different product variants.
+
+You can enable this for example like this:
+
+```xml
+<plugin>
+    <groupId>org.eclipse.tycho</groupId>
+    <artifactId>tycho-p2-director-plugin</artifactId>
+    <version>${tycho-version}</version>
+    <configuration>
+        <parallel>true</parallel>
+    </configuration>
+</plugin>
+```
+
+
+### New `repo-to-runnable` mojo
+
+This is a replacement for the [Repo2Runnable ant task](https://wiki.eclipse.org/Equinox/p2/Ant_Tasks#Repo2Runnable), example:
+
+```xml
+<plugin>
+    <groupId>org.eclipse.tycho</groupId>
+    <artifactId>tycho-p2-repository-plugin</artifactId>
+    <version>${tycho-version}</version>
+    <executions>
+        <execution>
+            <id>repo-to-runnable</id>
+            <goals>
+                <goal>repo-to-runnable</goal>
+            </goals>
+            <phase>pre-integration-test</phase>
+            <configuration>
+                <source>...</source>
+                <destination>...</destination>
+            </configuration>
+        </execution>
+    </executions>
+</plugin>
+```
+
+### Support for embedded target locations
+
+You can already define target definition files in various ways, e.g. as maven artifact or file reference.
+Now it is also possible to define them as an embedded part of the target platform configuration.
+All locations are handled as if they are part of a single target file:
+
+```xml
+<plugin>
+    <groupId>org.eclipse.tycho</groupId>
+    <artifactId>target-platform-configuration</artifactId>
+    <version>${tycho-version}</version>
+    <configuration>
+        <target>
+            <!-- one or more location elements like in a target file -->
+            <location includeDependencyDepth="infinite" includeDependencyScopes="compile" includeSource="true" missingManifest="generate" type="Maven">
+                <dependencies>
+                    <dependency>
+                        ...
+                    </dependency>
+                </dependencies>
+            </location>
+            <location includeAllPlatforms="true" includeMode="slicer" type="InstallableUnit">
+                <unit id="org.eclipse.license.feature.group" version="2.0.2.v20181016-2210"/>
+                ...
+                <repository location="https://download.eclipse.org/cbi/updates/license/2.0.2.v20181016-2210"/>
+            </location>
+            ...
+        </target>
+    </configuration>
+</plugin>
+```
+
+This is especially useful if you need some content only for the build but not in the IDE.
+
+### Using javac as the compiler for Tycho
+
+You can now use `javac` as the compiler backend for Tycho by adding the following configuration:
+
+```xml
+<plugin>
+    <groupId>org.eclipse.tycho</groupId>
+    <artifactId>tycho-compiler-plugin</artifactId>
+    <version>${tycho.version}</version>
+    <configuration>
+        <compilerId>javac</compilerId>
+    </configuration>
+</plugin>
+```
+
+
+### New `mirror-target-platform` mojo
+
+There is a new `mirror-target-platform` that allows to mirror the current target platform of a project into a P2 update site.
+This can be enabled for a project like this:
+
+```xml
+<plugin>
+    <groupId>org.eclipse.tycho</groupId>
+    <artifactId>target-platform-configuration</artifactId>
+    <executions>
+        <execution>
+            <id>inject</id>
+            <goals>
+                <goal>mirror-target-platform</goal>
+            </goals>
+        </execution>
+    </executions>
+</plugin>
+```
+
+The most usual use case for this is to transform an existing target file into a standalone repository.
+
+### new `director` mojo
+
+This mojo can be used in two ways:
+
+1. As a command line invocation passing arguments as properties using `mvn org.eclipse.tycho:tycho-p2-director-plugin:director -Ddestination=[target] ... -D...`
+2. as an execution inside a POM
+
+```xml
+<plugin>
+    <groupId>org.eclipse.tycho</groupId>
+    <artifactId>tycho-p2-director-plugin</artifactId>
+    <version>${tycho-version}</version>
+    <executions>
+        <execution>
+            <goals>
+                <goal>director</goal>
+            </goals>
+            <phase>package</phase>
+            <configuration>
+                <destination>...</destination>
+                ... other arguments ...
+            </configuration>
+        </execution>
+    </executions>
+ </plugin>
+```
+
+
+### New `tycho-eclipse-plugin`
+
+Tycho now contains a new `tycho-eclipse-plugin` that is dedicated to executing "tasks like eclipse".
+This currently includes
+- the former tycho-extras `tycho-eclipserun-plugin` and its mojos
+- a new `eclipse-build` mojo that allows to take a literal eclipse project and execute the build on it
+
+#### new `eclipse-build` mojo
+
+The `eclipse-build` mojo can be used like this
+
+```xml
+<plugin>
+    <groupId>org.eclipse.tycho</groupId>
+    <artifactId>tycho-eclipse-plugin</artifactId>
+    <version>${tycho-version}</version>
+    <executions>
+        <execution>
+            <id>eclipse-build</id>
+            <goals>
+                <goal>eclipse-build</goal>
+            </goals>
+        </execution>
+    </executions>
+</plugin>
+```
+
+### Support for PDE API Tools annotations
+
+Tycho now supports PDE API Tools annotations to be added to the project automatically.
+
+To enable this add
+
+```xml
+<plugin>
+    <groupId>org.eclipse.tycho</groupId>
+    <artifactId>tycho-apitools-plugin</artifactId>
+    <version>${tycho-version}</version>
+</plugin>
+```
+
+to your project and make sure it has the `org.eclipse.pde.api.tools.apiAnalysisNature` nature enabled in the `.project` file.
+For details how to use these see:
+
+- https://help.eclipse.org/latest/topic/org.eclipse.pde.doc.user/reference/api-tooling/api_javadoc_tags.htm
+- https://help.eclipse.org/latest/topic/org.eclipse.pde.doc.user/reference/api/org/eclipse/pde/api/tools/annotations/package-summary.html
+
+### New tycho-repository-plugin
 
 Tycho now contains a new `tycho-repository-plugin` that can be used to package OSGi repositories.
 
-### new option to include referenced repositories when resolving the target platform
+### Referenced repositories are considered by default when resolving the target platform
 
-Repositories can contain references to other repositories (e.g. to find additional dependencies), from now on there is a new option to also consider these references:
+The option `referencedRepositoryMode` (introduced in Tycho 4.0.2) now defaults to `include`: referenced repositories are considered by default when resolving the target platform, as PDE already does.
+To restore the old behavior of Tycho 4.0.2, you need to explicitly set the option to `ignore`:
 
 ```xml
 <plugin>
-	<groupId>org.eclipse.tycho</groupId>
-	<artifactId>target-platform-configuration</artifactId>
-	<version>${tycho-version}</version>
-	<configuration>
-		... other configuration options ...
-		<referencedRepositoryMode>include</referencedRepositoryMode>
-	</configuration>
+    <groupId>org.eclipse.tycho</groupId>
+    <artifactId>target-platform-configuration</artifactId>
+    <version>${tycho-version}</version>
+    <configuration>
+        ... other configuration options ...
+        <referencedRepositoryMode>ignore</referencedRepositoryMode>
+    </configuration>
 </plugin>
-	
-```
-### new option to filter added repository-references when assembling a p2-repository
 
-The repository references automatically added to a assembled p2-repository (via `tycho-p2-repository-plugin`'s `addIUTargetRepositoryReferences` or `addPomRepositoryReferences`) 
-can now be filtered by their location using exclusion and inclusion patterns and therefore allows more fine-grained control which references are added.
+```
+### New option to filter added repository-references when assembling a p2-repository
+
+If filtering provided artifacts is enabled, the repository references automatically added to a assembled p2-repository
+(via `tycho-p2-repository-plugin`'s `addIUTargetRepositoryReferences` or `addPomRepositoryReferences`) can now be filtered by their location
+using exclusion and inclusion patterns and therefore allows more fine-grained control which references are added.
+Additionally the automatically added references can be filter based on if they provide any of the filtered units or not.
+If `addOnlyProviding` is `true` repositories that don't provide any filtered unit are not added to the assembled repo.
+
 ```xml
 <plugin>
-	<groupId>org.eclipse.tycho</groupId>
-	<artifactId>tycho-p2-repository-plugin</artifactId>
-	<version>${tycho-version}</version>
-	<configuration>
-		... other configuration options ...
-		<repositoryReferenceFilter>
-			<exclude>
-				<location>https://foo.bar.org/hidden/**</location>
-				<location>https://foo.bar.org/secret/**</location>
-			</exclude>
-			<include>%regex[http(s)?:\/\/foo\.bar\.org\/.*]</include>
-		</repositoryReferenceFilter>
-	</configuration>
+    <groupId>org.eclipse.tycho</groupId>
+    <artifactId>tycho-p2-repository-plugin</artifactId>
+    <version>${tycho-version}</version>
+    <configuration>
+        ... other configuration options ...
+        <repositoryReferenceFilter>
+            <addOnlyProviding>true</addOnlyProviding>
+            <exclude>
+                <location>https://foo.bar.org/hidden/**</location>
+                <location> %regex[http(s)?:\/\/foo\.bar\.org\/secret\/.*]</location>
+                <location>![https://foo.bar.org/**]</location>
+            </exclude>
+        </repositoryReferenceFilter>
+    </configuration>
 </plugin>
-	
+
 ```
+
+### Remove support for deployableFeature option
+
+The deployableFeature option will create "standard eclipse update site directory with feature content will
+be created under target folder" but we already removed site-packaging from Tycho for a while, if one wants to
+archive similar a category.xml with eclipse-repository packaging gives much more control and power to the user.
+Alternatively the new `mirror-target-platform` mojo can be used.
+
+## 4.0.8
+
+backports:
+- maven dependencies of transitive projects are not discovered with `-am` / `--also-make`
+- Support for new `includeJRE` flag when building products
+- Improve SignRepositoryArtifactsMojo handling of unsigned content
+- Add demo for pde.bnd integration with classic Eclipse product build
+- Use original URL to decide if a IU is provided by reference
+- set-version: Fix regression overwriting mismatching versions
+- Sort dependency tree root nodes
+- Support links in classpath files
+- Add support for followRepositoryReference in .target files
+- Add flag to fail API tools on resolution error
+- Several bugfixes for building pde automatic manifest projects
+- Remove special handling of equinox-launcher fragments in AbstractArtifactDependencyWalker
+
+## 4.0.7
+
+backports:
+- update to next eclipse release
+- tycho-p2-director:director: Fix handling of destination on macOS
+- Prevent ConcurrentModificationException in PomInstallableUnitStore
+- Add an option to enhance the compile log with baseline problems
+- assemble-repository: Prevent sources from being included inadvertently
+- ExpandedProduct.getFeatures(ROOT_FEATURES) returns over-qualified IDs
+- provide suggested version for features
+- Do not fail the DS build if one dependency failed to add
+- Add a timestamp provider that inherits the timestamp from the parent
+- Add option to include all configured sources in ApiFileGenerationMojo
+- Do not fail target resolution if a referenced repository fails
+- Add URI to message of GOAWAY info
+- Reduce printed warnings in builds
+
+## 4.0.6
+
+### backports:
+
+- Support for CycloneDX Maven Plugin
+
+## 4.0.5
+
+### backports:
+
+- support for parallel execution of product assembly / archiving
+- new `repo-to-runnable` mojo
+- support for embedded target locations
+- using javac as the compiler for Tycho
+- new `mirror-target-platform` mojo
+- new director mojo
+- support for PDE Api Tools Annotations
+- api tools fixes
+- new `tycho-eclipse-plugin`
+
+## 4.0.4
+
+Backports:
+- Add schema-to-html mojo as a replacement for ant ConvertSchemaToHTML
+- Only set download/install-size attributes in features if they exist
+- Call the API tools directly without using ApiAnalysisApplication
+- Make additional P2 units from p2.inf available to the target-platform
+
+## 4.0.3
+
+### New option to filter added repository-references when assembling a p2-repository
+
+If filtering provided artifacts is enabled, the repository references automatically added to a assembled p2-repository
+(via `tycho-p2-repository-plugin`'s `addIUTargetRepositoryReferences` or `addPomRepositoryReferences`) can now be filtered by their location
+using exclusion and inclusion patterns and therefore allows more fine-grained control which references are added.
+Additionally the automatically added references can be filtered based on whether they provide any of the filtered units or not.
+If `addOnlyProviding` is `true` then repositories that don't provide any filtered unit are not added to the assembled repository.
+```xml
+<plugin>
+    <groupId>org.eclipse.tycho</groupId>
+    <artifactId>tycho-p2-repository-plugin</artifactId>
+    <version>${tycho-version}</version>
+    <configuration>
+        ... other configuration options ...
+        <repositoryReferenceFilter>
+            <addOnlyProviding>true</addOnlyProviding>
+            <exclude>
+                <location>https://foo.bar.org/hidden/**</location>
+                <location>%regex[http(s)?:\/\/foo\.bar\.org\/secret\/.*]</location>
+                <location>![https://foo.bar.org/**]</location>
+            </exclude>
+        </repositoryReferenceFilter>
+    </configuration>
+</plugin>
+```
+
+## 4.0.2
+- new option to include referenced repositories when resolving the target platform:
+Repositories can contain references to other repositories (e.g. to find additional dependencies), from now on there is a new option, `referencedRepositoryMode`, to also consider these references. By default, it is set to `ignore`; to enable referenced repositories in target platform resolution, set it to `include`:
+
+```xml
+<plugin>
+    <groupId>org.eclipse.tycho</groupId>
+    <artifactId>target-platform-configuration</artifactId>
+    <version>${tycho-version}</version>
+    <configuration>
+        ... other configuration options ...
+        <referencedRepositoryMode>include</referencedRepositoryMode>
+    </configuration>
+</plugin>
+```
+
+- Add dummy parameter to prevent warnings with jgit as timestamp provider
+
+## 4.0.1
+
+backports:
+- new tycho-repository-plugin
+- Non existing but optional dependencies lead to resolving issue in target
+- SharedHttpCacheStorage doesn't resolve redirect correctly if the uri that is given isn't normalized
+- Non existing but optional dependencies lead to resolving issue in target
+- Make comparison of newlines in text files more precise
+- Fix resolving of project if target do not contains JUnit
+- Check if the about to be injected maven coordinates can be resolved
 
 ## 4.0.0
 
@@ -53,10 +420,10 @@ can now be filtered by their location using exclusion and inclusion patterns and
 
 Tycho 4.x requires Maven Version 3.9.
 
-### creating maven p2 sites with Tycho packaging
+### Creating maven p2 sites with Tycho packaging
 
 There is already a way to [create a p2 maven site with Tycho](https://github.com/eclipse-tycho/tycho/blob/master/RELEASE_NOTES.md#create-p2-repository-referencing-maven-artifacts) for plain jar based projects.
-This support is now enhanced to being used in a Tycho based setup so it is possible to build a full maven deployed updatesite automatically with all bundles of the current build.
+This support is now enhanced to being used in a Tycho based setup so it is possible to build a full maven deployed update site automatically with all bundles of the current build.
 You can find a demo here:
 
 https://github.com/eclipse-tycho/tycho/tree/master/demo/p2-maven-site
@@ -64,7 +431,7 @@ https://github.com/eclipse-tycho/tycho/tree/master/demo/p2-maven-site
 
 ### New document-bundle mojo
 
-There is now a new mojo that replaces the usual ant-based workflow to generate the help index, it can be used like this:
+There is now a new mojo that replaces the usual Ant-based workflow to generate the help index, it can be used like this:
 
 ```xml
 <plugin>
@@ -157,7 +524,7 @@ the supported values are:
 - `default` - for backward-compatibility with older documentation, equivalent to `include`
 - `ignore` - local artifacts are ignored
 
-### new tycho-versions-plugin mojos
+### New tycho-versions-plugin mojos
 
 #### bump-versions mojo
 
@@ -242,7 +609,7 @@ The previous loading can be restored by a new `classLoaderOrder` parameter.
 This applies to `tycho-surefire-plugin:test` and `tycho-surefire-plugin:plugin-test`.
 
 
-### define targets in repository section
+### Define targets in repository section
 
 From now on one can define targets also in the repository section of the pom, only the URI variant is supported, but actually you can write everything as an URI already, this then looks like this:
 
@@ -350,7 +717,7 @@ URI in `<repository location="...">` in `*.target` files can contain:
 - System variable as `${system_property:myProp}` passed at build time as `-DmyProp`
 - Project location as `${project_loc:ProjectName}`
 
-### Migration guide 3.x > 4.x
+### Migration guide from 3.x to 4.x
 
 ### New delayed target platform resolving
 

@@ -18,8 +18,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import org.eclipse.tycho.DependencySeed;
 import org.eclipse.tycho.PlatformPropertiesUtils;
-import org.eclipse.tycho.core.resolver.shared.DependencySeed;
 
 /**
  * Value object for the configuration of this Maven plug-in. Used to select products to be
@@ -46,7 +46,7 @@ public final class Product {
     private String rootFolder;
 
     /**
-     * OS-specific name of the root folder of the materialized product using <tt>osgi.os</tt>
+     * OS-specific name of the root folder of the materialized product using <code>osgi.os</code>
      * environment values as keys. Has precedence over rootFolder.
      */
     private Map<String, String> rootFolders;

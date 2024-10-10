@@ -28,10 +28,10 @@ import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.codehaus.plexus.util.FileUtils;
 import org.eclipse.tycho.BuildDirectory;
+import org.eclipse.tycho.DependencySeed;
 import org.eclipse.tycho.PackagingType;
 import org.eclipse.tycho.core.TychoProject;
 import org.eclipse.tycho.core.osgitools.EclipseRepositoryProject;
-import org.eclipse.tycho.core.resolver.shared.DependencySeed;
 import org.eclipse.tycho.model.Category;
 import org.eclipse.tycho.p2.tools.FacadeException;
 import org.eclipse.tycho.p2.tools.publisher.facade.PublisherService;
@@ -39,10 +39,10 @@ import org.eclipse.tycho.p2.tools.publisher.facade.PublisherServiceFactory;
 
 /**
  * <p>
- * Publishes the category definitions from the <tt>category.xml</tt> in the root of the project.
+ * Publishes the category definitions from the <code>category.xml</code> in the root of the project.
  * </p>
  *
- * @see https://wiki.eclipse.org/Equinox/p2/Publisher
+ * @see <a href="https://wiki.eclipse.org/Equinox/p2/Publisher">Eclipse Wiki</a>
  */
 @Mojo(name = "publish-categories", defaultPhase = LifecyclePhase.PACKAGE, threadSafe = true, requiresDependencyResolution = ResolutionScope.COMPILE_PLUS_RUNTIME)
 public final class PublishCategoriesMojo extends AbstractPublishMojo {
@@ -80,7 +80,7 @@ public final class PublishCategoriesMojo extends AbstractPublishMojo {
 
     /**
      * Writes the Tycho-internal representation of categories back to a category.xml.
-     * 
+     *
      * @param category
      *            a category, with "qualifier" literals already replaced by the build qualifier.
      */

@@ -27,23 +27,15 @@ import org.eclipse.core.runtime.Status;
 import org.eclipse.equinox.p2.core.IPool;
 import org.eclipse.equinox.p2.core.IProvisioningAgent;
 import org.eclipse.equinox.p2.metadata.IInstallableUnit;
-import org.eclipse.equinox.p2.query.IQuery;
-import org.eclipse.equinox.p2.query.IQueryResult;
 import org.eclipse.equinox.p2.repository.IRepositoryReference;
 import org.eclipse.equinox.p2.repository.IRunnableWithProgress;
 import org.eclipse.equinox.p2.repository.metadata.IMetadataRepository;
+import org.eclipse.tycho.p2tools.copiedfromp2.QueryableArray;
 
-public class ImmutableInMemoryMetadataRepository implements IMetadataRepository {
+public class ImmutableInMemoryMetadataRepository extends QueryableArray implements IMetadataRepository {
 
-    private final QueryableCollection units;
-
-    public ImmutableInMemoryMetadataRepository(Set<IInstallableUnit> units) {
-        this.units = new QueryableCollection(units);
-    }
-
-    @Override
-    public IQueryResult<IInstallableUnit> query(IQuery<IInstallableUnit> query, IProgressMonitor monitor) {
-        return units.query(query, monitor);
+    public ImmutableInMemoryMetadataRepository(Set<IInstallableUnit> units, boolean copy) {
+        super(units, copy);
     }
 
     @Override
@@ -139,6 +131,11 @@ public class ImmutableInMemoryMetadataRepository implements IMetadataRepository 
 
     @Override
     public void addReferences(Collection<? extends IRepositoryReference> references) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean removeReferences(Collection<? extends IRepositoryReference> references) {
         throw new UnsupportedOperationException();
     }
 

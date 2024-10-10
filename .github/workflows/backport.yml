@@ -21,9 +21,9 @@ jobs:
       contents: write
     steps:
       - name: Backport Action
-        uses: sqren/backport-github-action@848927304bbe2d5d1baa6e14383c12d85caf381e # v9.3.0
+        uses: sqren/backport-github-action@ad888e978060bc1b2798690dd9d03c4036560947 # v9.5.1
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.TYCHO_SITE_PAT }}
           auto_backport_label_prefix: backport-to-
           add_original_reviewers: true
 

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2008, 2022 Sonatype Inc. and others.
+ * Copyright (c) 2008, 2024 Sonatype Inc. and others.
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
  * which accompanies this distribution, and is available at
@@ -33,6 +33,7 @@ import org.codehaus.plexus.archiver.util.DefaultFileSet;
 import org.codehaus.plexus.util.AbstractScanner;
 import org.eclipse.tycho.BuildProperties;
 import org.eclipse.tycho.DependencyArtifacts;
+import org.eclipse.tycho.TychoProperties;
 import org.eclipse.tycho.core.TychoProject;
 import org.eclipse.tycho.core.osgitools.DefaultReactorProject;
 
@@ -58,7 +59,7 @@ public abstract class AbstractTychoPackagingMojo extends AbstractMojo {
     /**
      * Build qualifier. Recommended way to set this parameter is using build-qualifier goal.
      */
-    @Parameter(property = "buildQualifier")
+	@Parameter(property = TychoProperties.BUILD_QUALIFIER)
     protected String qualifier;
 
     /**
@@ -91,6 +92,10 @@ public abstract class AbstractTychoPackagingMojo extends AbstractMojo {
      */
     @Parameter
     protected DefaultFileSet[] additionalFileSets;
+
+    /** If {@code true}, skips the packaging entirely. */
+    @Parameter(defaultValue = "false")
+    protected boolean skip;
 
     @Component
     protected PlexusContainer plexus;

@@ -50,7 +50,7 @@ import org.eclipse.tycho.p2.repository.module.ModuleArtifactRepository.ModuleArt
  * A p2 artifact repository implementation for the build output directory. Instances are persisted
  * in the following files:
  * <ul>
- * <li>A <tt>p2artifacts.xml</tt> file in the given build target directory, which contains a list of
+ * <li>A <code>p2artifacts.xml</code> file in the given build target directory, which contains a list of
  * all artifacts with p2 <i>and</i> Maven coordinates. (In particular the classifier part of the
  * Maven coordinates is relevant.) This file is deployed to Maven repositories alongside with the
  * built Tycho artifact.</li>
@@ -82,7 +82,7 @@ public class ModuleArtifactRepository extends ArtifactRepositoryBaseImpl<ModuleA
 
     // BEGIN construction
 
-    static boolean canAttemptRead(File repositoryDir) {
+    public static boolean canAttemptRead(File repositoryDir) {
         File requiredP2ArtifactsFile = new File(repositoryDir, TychoConstants.FILE_NAME_P2_ARTIFACTS);
         File requiredLocalArtifactsFile = new File(repositoryDir, TychoConstants.FILE_NAME_LOCAL_ARTIFACTS);
         return requiredP2ArtifactsFile.isFile() && requiredLocalArtifactsFile.isFile();
@@ -212,7 +212,7 @@ public class ModuleArtifactRepository extends ArtifactRepositoryBaseImpl<ModuleA
     @Override
     protected void internalStore(IProgressMonitor monitor) {
         try {
-            internalStoreWithException();
+            saveToDisk();
         } catch (IOException e) {
             String message = "Error while writing repository to " + p2DataFile;
             // TODO 393004 Use a specific type?
@@ -222,7 +222,7 @@ public class ModuleArtifactRepository extends ArtifactRepositoryBaseImpl<ModuleA
 
     private void storeOrProvisioningException() throws ProvisionException {
         try {
-            internalStoreWithException();
+            saveToDisk();
         } catch (IOException e) {
             String message = "Error while writing repository to " + p2DataFile;
             int code = ProvisionException.REPOSITORY_FAILED_WRITE;
@@ -231,7 +231,7 @@ public class ModuleArtifactRepository extends ArtifactRepositoryBaseImpl<ModuleA
         }
     }
 
-    private void internalStoreWithException() throws IOException {
+    public void saveToDisk() throws IOException {
         ArtifactsIO io = new ArtifactsIO();
         io.writeXML(flattenedValues().collect(toSet()), p2DataFile);
     }

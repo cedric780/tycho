@@ -21,20 +21,38 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
+import org.eclipse.tycho.model.classpath.ContainerAccessRule.Kind;
+import org.eclipse.tycho.model.project.EclipseProject;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 
 public class ClasspathParser {
+    public static final String CLASSPATH_FILENAME = ".classpath";
 
-    public static Collection<ProjectClasspathEntry> parse(File basedir) throws IOException {
-        File file = new File(basedir, ".classpath");
+    public static Collection<ProjectClasspathEntry> parse(File classpathFile, EclipseProject project)
+            throws IOException {
+        Function<String, File> pathInProjectResolver = path -> project.getFile(path).normalize().toFile();
+        return parse(classpathFile, pathInProjectResolver);
+    }
+
+    public static Collection<ProjectClasspathEntry> parse(File classpathFile) throws IOException {
+        Function<String, File> pathInProjectResolver = path -> new File(classpathFile.getParent(), path);
+        return parse(classpathFile, pathInProjectResolver);
+    }
+
+    private static Collection<ProjectClasspathEntry> parse(File file, Function<String, File> pathInProjectResolver)
+            throws IOException {
         if (!file.isFile()) {
             return Collections.emptyList();
         }
@@ -46,14 +64,13 @@ public class ClasspathParser {
             NodeList classpathentries = doc.getDocumentElement().getElementsByTagName("classpathentry");
             int length = classpathentries.getLength();
             List<ProjectClasspathEntry> list = new ArrayList<>();
-            String defaultOutput = "bin";
+            File defaultOutput = pathInProjectResolver.apply("bin");
             for (int i = 0; i < length; i++) {
                 Element classpathentry = (Element) classpathentries.item(i);
                 String kind = classpathentry.getAttribute("kind");
                 if ("output".equals(kind)) {
-                    defaultOutput = classpathentry.getAttribute("path");
-                    list.add(
-                            new JDTOuput(new File(file.getParentFile(), defaultOutput), getAttributes(classpathentry)));
+                    defaultOutput = pathInProjectResolver.apply(classpathentry.getAttribute("path"));
+                    list.add(new JDTOuput(defaultOutput, getAttributes(classpathentry)));
                 }
             }
             for (int i = 0; i < length; i++) {
@@ -62,28 +79,29 @@ public class ClasspathParser {
 
                 String kind = classpathentry.getAttribute("kind");
                 if ("src".equals(kind)) {
-                    String path = classpathentry.getAttribute("path");
-                    String output = classpathentry.getAttribute("output");
-                    if (output.isBlank()) {
-                        output = defaultOutput;
-                    }
-                    list.add(new JDTSourceFolder(new File(file.getParentFile(), path),
-                            new File(file.getParentFile(), output), attributes));
+                    File path = pathInProjectResolver.apply(classpathentry.getAttribute("path"));
+                    String outputAttribute = classpathentry.getAttribute("output");
+                    File output = !outputAttribute.isBlank() ? pathInProjectResolver.apply(outputAttribute)
+                            : defaultOutput;
+                    list.add(new JDTSourceFolder(path, output, attributes));
                 } else if ("con".equals(kind)) {
                     String path = classpathentry.getAttribute("path");
+                    List<ContainerAccessRule> accessRules = parseAccessRules(classpathentry);
                     if (path.startsWith(JUnitClasspathContainerEntry.JUNIT_CONTAINER_PATH_PREFIX)) {
                         String junit = path
                                 .substring(JUnitClasspathContainerEntry.JUNIT_CONTAINER_PATH_PREFIX.length());
-                        list.add(new JDTJUnitContainerClasspathEntry(path, junit, attributes));
+                        list.add(new JDTJUnitContainerClasspathEntry(path, junit, attributes, accessRules));
                     } else if (path.equals(JREClasspathEntry.JRE_CONTAINER_PATH)
                             || path.startsWith(JREClasspathEntry.JRE_CONTAINER_PATH_STANDARDVMTYPE_PREFIX)) {
-                        list.add(new JDTJREClasspathEntry(path, attributes));
+                        list.add(new JDTJREClasspathEntry(path, attributes, accessRules));
+                    } else if (path.equals(PluginDependenciesClasspathContainer.PATH)) {
+                        list.add(new RequiredPluginsEntry(path, attributes, accessRules));
                     } else {
-                        list.add(new JDTContainerClasspathEntry(path, attributes));
+                        list.add(new JDTContainerClasspathEntry(path, attributes, accessRules));
                     }
                 } else if ("lib".equals(kind)) {
-                    String path = classpathentry.getAttribute("path");
-                    list.add(new JDTLibraryClasspathEntry(new File(file.getParentFile(), path), attributes));
+                    File path = pathInProjectResolver.apply(classpathentry.getAttribute("path"));
+                    list.add(new JDTLibraryClasspathEntry(path, attributes));
                 } else if ("var".equals(kind)) {
                     String path = classpathentry.getAttribute("path");
                     if (path.startsWith(M2ClasspathVariable.M2_REPO_VARIABLE_PREFIX)) {
@@ -100,6 +118,33 @@ public class ClasspathParser {
         }
     }
 
+    private static List<ContainerAccessRule> parseAccessRules(Element classpathentry) {
+        NodeList accessrules = classpathentry.getElementsByTagName("accessrule");
+        Stream<Node> stream = IntStream.range(0, accessrules.getLength()).mapToObj(i -> accessrules.item(i));
+        return stream.map(Element.class::cast).map(elem -> {
+            Kind kind = Kind.parse(elem.getAttribute("kind"));
+            String pattern = elem.getAttribute("pattern");
+            ContainerAccessRule r = new ContainerAccessRule() {
+
+                @Override
+                public Kind getKind() {
+                    return kind;
+                }
+
+                @Override
+                public String getPattern() {
+                    return pattern;
+                }
+
+                @Override
+                public String toString() {
+                    return pattern + " [" + kind + "]";
+                }
+            };
+            return r;
+        }).toList();
+    }
+
     private static Map<String, String> getAttributes(Element parent) {
         Map<String, String> map = new HashMap<>();
         NodeList attributes = parent.getElementsByTagName("attribute");
@@ -111,10 +156,21 @@ public class ClasspathParser {
         return map;
     }
 
+    private static final class RequiredPluginsEntry extends JDTContainerClasspathEntry
+            implements PluginDependenciesClasspathContainer {
+
+        public RequiredPluginsEntry(String path, Map<String, String> attributes,
+                List<ContainerAccessRule> accessRules) {
+            super(path, attributes, accessRules);
+        }
+
+    }
+
     private static final class JDTJREClasspathEntry extends JDTContainerClasspathEntry implements JREClasspathEntry {
 
-        public JDTJREClasspathEntry(String path, Map<String, String> attributes) {
-            super(path, attributes);
+        public JDTJREClasspathEntry(String path, Map<String, String> attributes,
+                List<ContainerAccessRule> accessRules) {
+            super(path, attributes, accessRules);
         }
 
         @Override
@@ -146,8 +202,9 @@ public class ClasspathParser {
 
         private final String junit;
 
-        public JDTJUnitContainerClasspathEntry(String path, String junit, Map<String, String> attributes) {
-            super(path, attributes);
+        public JDTJUnitContainerClasspathEntry(String path, String junit, Map<String, String> attributes,
+                List<ContainerAccessRule> accessRules) {
+            super(path, attributes, accessRules);
             this.junit = junit;
         }
 
@@ -163,9 +220,22 @@ public class ClasspathParser {
             } else if (JUNIT4.equals(junit)) {
                 return JUNIT4_PLUGINS;
             } else if (JUNIT5.equals(junit)) {
-                return JUNIT5_PLUGINS;
+                if (isVintage()) {
+                    return JUNIT5_PLUGINS;
+                } else {
+                    return JUNIT5_WITHOUT_VINTAGE_PLUGINS;
+                }
             }
             return Collections.emptyList();
+        }
+
+        @Override
+        public boolean isVintage() {
+            String vintage = getAttributes().get("vintage");
+            if (vintage != null && !vintage.isBlank()) {
+                return Boolean.parseBoolean(vintage);
+            }
+            return true;
         }
 
     }
@@ -174,10 +244,13 @@ public class ClasspathParser {
 
         protected final String path;
         protected final Map<String, String> attributes;
+        private List<ContainerAccessRule> accessRules;
 
-        public JDTContainerClasspathEntry(String path, Map<String, String> attributes) {
+        public JDTContainerClasspathEntry(String path, Map<String, String> attributes,
+                List<ContainerAccessRule> accessRules) {
             this.path = path;
             this.attributes = attributes;
+            this.accessRules = accessRules;
         }
 
         @Override
@@ -188,6 +261,11 @@ public class ClasspathParser {
         @Override
         public String getContainerPath() {
             return path;
+        }
+
+        @Override
+        public List<ContainerAccessRule> getAccessRules() {
+            return accessRules;
         }
 
     }

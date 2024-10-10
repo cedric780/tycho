@@ -10,7 +10,8 @@
 -    Sonatype Inc. - initial API and implementation
 -->
 
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/maven-v4_0_0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 
@@ -40,28 +41,32 @@
 			<groupId>org.eclipse.tycho</groupId>
 			<artifactId>tycho-core</artifactId>
 		</dependency>
+		<dependency>
+			<groupId>org.codehaus.mojo.versions</groupId>
+			<artifactId>versions-model</artifactId>
+			<version>2.17.1</version>
+		</dependency>
+		<dependency>
+			<groupId>org.codehaus.mojo.versions</groupId>
+			<artifactId>versions-common</artifactId>
+			<version>2.17.1</version>
+		</dependency>
 	</dependencies>
 
-	<profiles>
-		<profile>
-			<id>its</id>
-			<build>
-				<plugins>
-					<plugin>
-						<groupId>org.apache.maven.plugins</groupId>
-						<artifactId>maven-invoker-plugin</artifactId>
-						<configuration>
-							<goals>
-								<goal>${project.groupId}:${project.artifactId}:${project.version}:update-target</goal>
-							</goals>
-							<properties>
-								<target>update-target.target</target>
-							</properties>
-						</configuration>
-					</plugin>
-				</plugins>
-			</build>
-		</profile>
-	</profiles>
-
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-plugin-plugin</artifactId>
+				<!-- workaround for https://issues.apache.org/jira/browse/MPLUGIN-450 -->
+				<configuration>
+					<goalPrefix>tycho-version-bump</goalPrefix>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.eclipse.sisu</groupId>
+				<artifactId>sisu-maven-plugin</artifactId>
+			</plugin>
+		</plugins>
+	</build>
 </project>

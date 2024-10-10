@@ -26,7 +26,6 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.endsWith;
 import static org.hamcrest.CoreMatchers.hasItem;
 import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
@@ -50,9 +49,9 @@ import org.eclipse.equinox.p2.metadata.IInstallableUnit;
 import org.eclipse.equinox.p2.query.QueryUtil;
 import org.eclipse.tycho.BuildFailureException;
 import org.eclipse.tycho.DependencyResolutionException;
+import org.eclipse.tycho.DependencySeed;
 import org.eclipse.tycho.Interpolator;
 import org.eclipse.tycho.TargetEnvironment;
-import org.eclipse.tycho.core.resolver.shared.DependencySeed;
 import org.eclipse.tycho.p2.repository.PublishingRepository;
 import org.eclipse.tycho.p2.repository.module.PublishingRepositoryImpl;
 import org.eclipse.tycho.p2.tools.publisher.PublishProductToolImpl;
@@ -111,7 +110,7 @@ public class PublishProductToolTest extends TychoPlexusTestCase {
         File launcherBinaries = resourceFile("launchers/");
 
         subject = initPublisher();
-        Collection<DependencySeed> seeds = subject.publishProduct(productDefinition, launcherBinaries, FLAVOR);
+        Collection<DependencySeed> seeds = subject.publishProduct(productDefinition, launcherBinaries, FLAVOR, null);
 
         assertEquals(1, seeds.size());
         DependencySeed seed = seeds.iterator().next();
@@ -133,7 +132,7 @@ public class PublishProductToolTest extends TychoPlexusTestCase {
         File productDefinition = resourceFile("publishers/products/test.product");
         subject = initPublisher();
 
-        IInstallableUnit unit = getUnit(subject.publishProduct(productDefinition, null, FLAVOR));
+        IInstallableUnit unit = getUnit(subject.publishProduct(productDefinition, null, FLAVOR, null));
 
         assertEquals("0.1.0." + QUALIFIER, unit.getVersion().toString());
     }
@@ -144,7 +143,7 @@ public class PublishProductToolTest extends TychoPlexusTestCase {
         subject = initPublisher(createBundleIU("test.plugin", "0.1.0.20141230"), createBundleIU("test.plugin", "1.1.0"),
                 createFeatureIU("test.feature", "0.2.0.20141230"), createFeatureIU("test.feature", "1.2.0"));
 
-        IInstallableUnit unit = getUnit(subject.publishProduct(productDefinition, null, FLAVOR));
+        IInstallableUnit unit = getUnit(subject.publishProduct(productDefinition, null, FLAVOR, null));
 
         assertThat(unit.getRequirements(), hasItem(strictRequirement("test.plugin", "1.1.0")));
         assertThat(unit.getRequirements(), hasItem(strictRequirement("test.feature.feature.group", "1.2.0")));
@@ -156,7 +155,7 @@ public class PublishProductToolTest extends TychoPlexusTestCase {
         subject = initPublisher(createBundleIU("test.plugin", "0.1.0.20141230"), createBundleIU("test.plugin", "1.1.0"),
                 createFeatureIU("test.feature", "0.2.0.20141230"), createFeatureIU("test.feature", "1.2.0"));
 
-        IInstallableUnit unit = getUnit(subject.publishProduct(productDefinition, null, FLAVOR));
+        IInstallableUnit unit = getUnit(subject.publishProduct(productDefinition, null, FLAVOR, null));
 
         assertThat(unit.getRequirements(), hasItem(strictRequirement("test.plugin", "0.1.0.20141230")));
         assertThat(unit.getRequirements(), hasItem(strictRequirement("test.feature.feature.group", "0.2.0.20141230")));
@@ -168,7 +167,7 @@ public class PublishProductToolTest extends TychoPlexusTestCase {
         subject = initPublisher();
 
         BuildFailureException e = assertThrows(BuildFailureException.class,
-                () -> subject.publishProduct(productDefinition, null, FLAVOR));
+                () -> subject.publishProduct(productDefinition, null, FLAVOR, null));
         assertThat(e.getMessage(),
                 both(containsString("inclusionsWithVersionSyntaxError.product")).and(containsString("nonOSGi")));
     }
@@ -181,7 +180,7 @@ public class PublishProductToolTest extends TychoPlexusTestCase {
         logVerifier.expectError(containsString("test.feature1"));
         logVerifier.expectError(containsString("test.feature2"));
         assertThrows(DependencyResolutionException.class,
-                () -> subject.publishProduct(productDefinition, null, FLAVOR));
+                () -> subject.publishProduct(productDefinition, null, FLAVOR, null));
     }
 
     @Test
@@ -190,7 +189,7 @@ public class PublishProductToolTest extends TychoPlexusTestCase {
         File productDefinition = resourceFile("publishers/products/featureProductWithLeftovers.product");
         subject = initPublisher(createFeatureIU("org.eclipse.rcp", "3.3.101.R34x_v20081125"));
 
-        IInstallableUnit unit = getUnit(subject.publishProduct(productDefinition, null, FLAVOR));
+        IInstallableUnit unit = getUnit(subject.publishProduct(productDefinition, null, FLAVOR, null));
 
         assertThat(unit.getRequirements(),
                 hasItem(strictRequirement("org.eclipse.rcp.feature.group", "3.3.101.R34x_v20081125")));
@@ -201,7 +200,7 @@ public class PublishProductToolTest extends TychoPlexusTestCase {
         File productDefinition = resourceFile("publishers/products/pluginProductWithLeftovers.product");
         subject = initPublisher(createBundleIU("org.eclipse.core.runtime", "3.5.0.v20090525"));
 
-        IInstallableUnit unit = getUnit(subject.publishProduct(productDefinition, null, FLAVOR));
+        IInstallableUnit unit = getUnit(subject.publishProduct(productDefinition, null, FLAVOR, null));
 
         assertThat(unit.getRequirements(), hasItem(strictRequirement("org.eclipse.core.runtime", "3.5.0.v20090525")));
     }
@@ -215,7 +214,7 @@ public class PublishProductToolTest extends TychoPlexusTestCase {
 
         logVerifier.expectError(containsString("org.eclipse.core.filesystem.hpux.ppc"));
         assertThrows(DependencyResolutionException.class,
-                () -> subject.publishProduct(productDefinition, launcherBinaries, FLAVOR));
+                () -> subject.publishProduct(productDefinition, launcherBinaries, FLAVOR, null));
     }
 
     @Test
@@ -223,7 +222,7 @@ public class PublishProductToolTest extends TychoPlexusTestCase {
         File productDefinition = resourceFile("publishers/products/p2Inf/test.product");
         subject = initPublisher();
 
-        subject.publishProduct(productDefinition, null, FLAVOR);
+        subject.publishProduct(productDefinition, null, FLAVOR, null);
 
         assertThat(unitsIn(outputRepository), hasItem(unitWithId("testproduct")));
         IInstallableUnit unit = getUnique(unitWithId("testproduct"), unitsIn(outputRepository));
@@ -240,7 +239,7 @@ public class PublishProductToolTest extends TychoPlexusTestCase {
         File productDefinition = resourceFile("publishers/products/p2InfPerProduct/test.product");
         subject = initPublisher();
 
-        IInstallableUnit unit = getUnit(subject.publishProduct(productDefinition, null, FLAVOR));
+        IInstallableUnit unit = getUnit(subject.publishProduct(productDefinition, null, FLAVOR, null));
 
         assertThat(unit.getRequirements(), hasItem(strictRequirement("extra.iu", "1.2.3." + QUALIFIER)));
     }
@@ -251,7 +250,7 @@ public class PublishProductToolTest extends TychoPlexusTestCase {
         subject = initPublisher(createBundleIU("org.eclipse.osgi", "3.10.1.v20140909-1633"));
         when(interpolatorMock.interpolate("${unqualifiedVersion}.${buildQualifier}")).thenReturn("1.0.0.20150109");
 
-        IInstallableUnit mainUnit = getUnit(subject.publishProduct(productDefinition, null, FLAVOR));
+        IInstallableUnit mainUnit = getUnit(subject.publishProduct(productDefinition, null, FLAVOR, null));
 
         String configUnitId = "tooling" + mainUnit.getId() + ".config.testws.testos.testarch";
         IInstallableUnit configUnit = getUnique(unitWithId(configUnitId), unitsIn(outputRepository));
@@ -266,15 +265,17 @@ public class PublishProductToolTest extends TychoPlexusTestCase {
                 createFeatureIU("org.eclipse.e4.rcp", "1.0"), createFeatureIU("org.eclipse.help", "2.0.102.v20140128"),
                 createFeatureIU("org.eclipse.egit", "2.0"));
 
-        List<DependencySeed> seeds = subject.publishProduct(productDefinition, null, FLAVOR);
+        List<DependencySeed> seeds = subject.publishProduct(productDefinition, null, FLAVOR, null);
         IInstallableUnit productUnit = getUnique(productUnit(), unitsIn(seeds));
 
         assertThat(productUnit.getRequirements(),
                 hasItem(requirement("org.eclipse.rcp.feature.group", "4.4.0.v20140128")));
         assertThat(productUnit.getRequirements(), hasItem(requirement("org.eclipse.e4.rcp.feature.group", "1.0")));
-        assertThat(productUnit.getRequirements(),
-                not(hasItem(requirement("org.eclipse.help.feature.group", "2.0.102.v20140128"))));
-        assertThat(productUnit.getRequirements(), not(hasItem(requirement("org.eclipse.egit.feature.group", "2.0"))));
+        assertThat(productUnit.getRequirements(), hasItem(requirement("org.eclipse.help.feature.group",
+                "2.0.102.v20140128",
+                "(|(org.eclipse.equinox.p2.install.mode.root=true)(product.with.root.features.install.mode.root=true))")));
+        assertThat(productUnit.getRequirements(), hasItem(requirement("org.eclipse.egit.feature.group", "2.0",
+                "(|(org.eclipse.equinox.p2.install.mode.root=true)(product.with.root.features.install.mode.root=true))")));
 
         assertEquals("org.eclipse.help", seeds.get(1).getId());
         assertThat(seeds.get(1).getInstallableUnit(), is(unitWithId("org.eclipse.help.feature.group")));

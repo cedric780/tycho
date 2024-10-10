@@ -13,12 +13,10 @@
 package org.eclipse.tycho.core.resolver;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.project.MavenProject;
@@ -29,17 +27,17 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.equinox.p2.metadata.IInstallableUnit;
 import org.eclipse.equinox.p2.metadata.IRequirement;
 import org.eclipse.equinox.p2.metadata.MetadataFactory;
-import org.eclipse.equinox.p2.metadata.MetadataFactory.InstallableUnitDescription;
-import org.eclipse.equinox.p2.metadata.Version;
 import org.eclipse.equinox.p2.metadata.VersionRange;
-import org.eclipse.equinox.p2.publisher.eclipse.BundlesAction;
 import org.eclipse.tycho.BuildProperties;
 import org.eclipse.tycho.BuildPropertiesParser;
 import org.eclipse.tycho.ReactorProject;
 import org.eclipse.tycho.core.TychoProjectManager;
 import org.eclipse.tycho.core.osgitools.DefaultReactorProject;
+import org.eclipse.tycho.p2maven.tmp.BundlesAction;
 import org.eclipse.tycho.resolver.InstallableUnitProvider;
 
+import aQute.bnd.header.Attrs;
+import aQute.bnd.header.OSGiHeader;
 import aQute.bnd.osgi.Constants;
 import aQute.bnd.osgi.Processor;
 
@@ -67,7 +65,7 @@ public class AdditionalBundleRequirementsInstallableUnitProvider implements Inst
             try (Processor processor = bndTychoProject.get()) {
                 List<IRequirement> requirements = getBndClasspathRequirements(processor);
                 if (!requirements.isEmpty()) {
-                    return createIU(requirements);
+                    return InstallableUnitProvider.createIU(requirements, "bnd-classpath-requirements");
                 }
             } catch (IOException e) {
                 logger.warn("Can't determine classpath requirements from " + project.getId(), e);
@@ -80,7 +78,7 @@ public class AdditionalBundleRequirementsInstallableUnitProvider implements Inst
                     .map(bundleName -> MetadataFactory.createRequirement(BundlesAction.CAPABILITY_NS_OSGI_BUNDLE,
                             bundleName, VersionRange.emptyRange, null, true, true))
                     .toList();
-            return createIU(additionalBundleRequirements);
+            return InstallableUnitProvider.createIU(additionalBundleRequirements, "additional-bundle-requirements");
         }
         return Collections.emptyList();
     }
@@ -89,23 +87,22 @@ public class AdditionalBundleRequirementsInstallableUnitProvider implements Inst
         //See https://bnd.bndtools.org/instructions/buildpath.html
         String buildPath = processor.mergeProperties(Constants.BUILDPATH);
         if (buildPath != null && !buildPath.isBlank()) {
-            return Arrays.stream(buildPath.split(","))
-                    .map(bundleName -> MetadataFactory.createRequirement(BundlesAction.CAPABILITY_NS_OSGI_BUNDLE,
-                            bundleName.trim(), VersionRange.emptyRange, null, true, true))
-                    .toList();
+            return OSGiHeader.parseHeader(buildPath).entrySet().stream().map(entry -> {
+                String bundleName = entry.getKey();
+                Attrs attrs = entry.getValue();
+                String version = attrs.get(Constants.VERSION_ATTRIBUTE, Constants.VERSION_ATTR_LATEST);
+                VersionRange range;
+                if (Constants.VERSION_ATTR_LATEST.equals(version)) {
+                    range = VersionRange.emptyRange;
+                } else {
+                    range = VersionRange.create(version);
+                }
+                return MetadataFactory.createRequirement(BundlesAction.CAPABILITY_NS_OSGI_BUNDLE, bundleName.trim(),
+                        range, null, true, true);
+            }).toList();
+
         }
         return Collections.emptyList();
-    }
-
-    private Collection<IInstallableUnit> createIU(List<IRequirement> additionalBundleRequirements) {
-        if (additionalBundleRequirements.isEmpty()) {
-            return Collections.emptyList();
-        }
-        InstallableUnitDescription result = new MetadataFactory.InstallableUnitDescription();
-        result.setId("additional-bundle-requirements-" + UUID.randomUUID());
-        result.setVersion(Version.createOSGi(0, 0, 0, String.valueOf(System.currentTimeMillis())));
-        result.addRequirements(additionalBundleRequirements);
-        return List.of(MetadataFactory.createInstallableUnit(result));
     }
 
 }

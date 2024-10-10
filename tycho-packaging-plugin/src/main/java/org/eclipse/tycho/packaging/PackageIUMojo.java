@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2015 Rapicorp, Inc. and others.
+ * Copyright (c) 2015, 2024 Rapicorp, Inc. and others.
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
  * which accompanies this distribution, and is available at
@@ -27,8 +27,8 @@ import org.codehaus.plexus.archiver.ArchiverException;
 import org.codehaus.plexus.archiver.util.DefaultFileSet;
 import org.codehaus.plexus.archiver.zip.ZipArchiver;
 import org.eclipse.tycho.TargetPlatform;
+import org.eclipse.tycho.core.TychoProjectManager;
 import org.eclipse.tycho.core.osgitools.DefaultReactorProject;
-import org.eclipse.tycho.core.utils.TychoProjectUtils;
 import org.eclipse.tycho.model.IU;
 
 /**
@@ -56,8 +56,15 @@ public class PackageIUMojo extends AbstractTychoPackagingMojo {
     @Component(role = Archiver.class, hint = "zip")
     private ZipArchiver zipArchiver;
 
+	@Component
+	private TychoProjectManager projectManager;
+
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
+        if (skip) {
+            getLog().info("Skip packaging");
+            return;
+        }
         synchronized (LOCK) {
             outputDirectory.mkdirs();
 
@@ -101,8 +108,7 @@ public class PackageIUMojo extends AbstractTychoPackagingMojo {
         iuTransformer.replaceQualifierInCapabilities(iu.getProvidedCapabilites(),
                 DefaultReactorProject.adapt(project).getBuildQualifier());
 
-        TargetPlatform targetPlatform = TychoProjectUtils
-                .getTargetPlatformIfAvailable(DefaultReactorProject.adapt(project));
+		TargetPlatform targetPlatform = projectManager.getTargetPlatform(project).orElse(null);
         if (targetPlatform == null) {
             getLog().warn(
                     "Skipping version reference expansion in p2iu project using the deprecated -Dtycho.targetPlatform configuration");

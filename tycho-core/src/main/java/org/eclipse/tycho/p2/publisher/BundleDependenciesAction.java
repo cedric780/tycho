@@ -32,7 +32,7 @@ import org.eclipse.equinox.p2.publisher.AdviceFileAdvice;
 import org.eclipse.equinox.p2.publisher.AdviceFileParser;
 import org.eclipse.equinox.p2.publisher.IPublisherInfo;
 import org.eclipse.equinox.p2.publisher.actions.ICapabilityAdvice;
-import org.eclipse.equinox.p2.publisher.eclipse.BundlesAction;
+import org.eclipse.tycho.p2maven.tmp.BundlesAction;
 import org.eclipse.equinox.spi.p2.publisher.PublisherHelper;
 import org.eclipse.osgi.service.resolver.BundleDescription;
 import org.eclipse.osgi.service.resolver.BundleSpecification;
@@ -98,20 +98,11 @@ public class BundleDependenciesAction extends BundlesAction {
 
         Map<String, String> advice = new LinkedHashMap<>();
 
-        try {
-            InputStream is = new BufferedInputStream(new FileInputStream(adviceFile));
-            try {
-                Properties props = new Properties();
-                props.load(is);
-                for (Map.Entry<Object, Object> p : props.entrySet()) {
-                    advice.put((String) p.getKey(), (String) p.getValue());
-                }
-            } finally {
-                try {
-                    is.close();
-                } catch (IOException secondary) {
-                    // secondary exception
-                }
+        try (InputStream is = new BufferedInputStream(new FileInputStream(adviceFile))) {
+            Properties props = new Properties();
+            props.load(is);
+            for (Map.Entry<Object, Object> p : props.entrySet()) {
+                advice.put((String) p.getKey(), (String) p.getValue());
             }
         } catch (IOException e) {
             // TODO log

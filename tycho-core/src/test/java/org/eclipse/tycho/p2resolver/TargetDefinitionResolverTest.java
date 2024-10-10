@@ -253,7 +253,11 @@ public class TargetDefinitionResolverTest extends TychoPlexusTestCase {
     static Collection<IVersionedId> versionedIdsOf(TargetDefinitionContent content) {
         Collection<IVersionedId> result = new ArrayList<>();
         for (IInstallableUnit unit : content.query(QueryUtil.ALL_UNITS, null).toUnmodifiableSet()) {
-            result.add(new VersionedId(unit.getId(), unit.getVersion()));
+            String id = unit.getId();
+            if (id.startsWith("generated.target.category.")) {
+                continue;
+            }
+            result.add(new VersionedId(id, unit.getVersion()));
         }
         return result;
     }
@@ -360,6 +364,11 @@ public class TargetDefinitionResolverTest extends TychoPlexusTestCase {
 
         @Override
         public boolean includeSource() {
+            return false;
+        }
+
+        @Override
+        public boolean includeConfigurePhase() {
             return false;
         }
     }

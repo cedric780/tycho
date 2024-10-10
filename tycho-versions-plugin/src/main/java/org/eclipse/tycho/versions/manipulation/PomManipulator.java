@@ -11,7 +11,8 @@
  *    Sonatype Inc. - initial API and implementation
  *    Sebastien Arod - introduce VersionChangesDescriptor
  *    Bachmann electronic GmbH. - #472579 - Support setting the version for pomless builds
- *    Christoph Läubrich - Bug 550313 - tycho-versions-plugin uses hard-coded polyglot file 
+ *    Christoph Läubrich - Bug 550313 - tycho-versions-plugin uses hard-coded polyglot file
+ *    SAP SE - #3744 - ci-friendly version support
  *******************************************************************************/
 package org.eclipse.tycho.versions.manipulation;
 
@@ -20,11 +21,10 @@ import static org.eclipse.tycho.versions.engine.Versions.isVersionEquals;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.codehaus.plexus.component.annotations.Component;
 import org.eclipse.tycho.versions.engine.MetadataManipulator;
@@ -38,35 +38,64 @@ import org.eclipse.tycho.versions.pom.GAV;
 import org.eclipse.tycho.versions.pom.Plugin;
 import org.eclipse.tycho.versions.pom.PluginManagement;
 import org.eclipse.tycho.versions.pom.PomFile;
+import org.eclipse.tycho.versions.pom.PomUtil;
 import org.eclipse.tycho.versions.pom.Profile;
 import org.eclipse.tycho.versions.pom.Property;
 
 @Component(role = MetadataManipulator.class, hint = PomManipulator.HINT)
 public class PomManipulator extends AbstractMetadataManipulator {
+    private static final String POM = "pom";
+
     private static final String NULL = "<null>";
 
-    public static final String HINT = "pom";
-
-    private static final Pattern CI_FRIENDLY_EXPRESSION = Pattern.compile("\\$\\{(.+?)\\}");
+    public static final String HINT = POM;
 
     @Override
     public boolean addMoreChanges(ProjectMetadata project, VersionChangesDescriptor versionChangeContext) {
         PomFile pom = project.getMetadata(PomFile.class);
         if (pom == null) {
-            throw new RuntimeException("no pom avaiable for " + project.getBasedir());
+            throw new RuntimeException("no pom available for " + project.getBasedir());
         }
         GAV parent = pom.getParent();
 
-        boolean moreChanges = false;
-        for (PomVersionChange change : versionChangeContext.getVersionChanges()) {
-            if (parent != null && isGavEquals(parent, change)) {
-                if (isVersionEquals(pom.getVersion(), change.getVersion())) {
-                    moreChanges |= versionChangeContext
-                            .addVersionChange(new PomVersionChange(pom, change.getVersion(), change.getNewVersion()));
+        AtomicBoolean moreChanges = new AtomicBoolean();
+        if (parent != null) {
+            for (PomVersionChange change : versionChangeContext.getVersionChanges()) {
+                if (isGavEquals(parent, change)) {
+                    if (isVersionEquals(pom.getVersion(), change.getVersion())) {
+                        if (versionChangeContext.addVersionChange(
+                                new PomVersionChange(pom, change.getVersion(), change.getNewVersion()))) {
+                            moreChanges.set(true);
+                        }
+                    }
                 }
             }
         }
-        return moreChanges;
+        //if we are about to change we need to check the submodule
+        if (POM.equals(pom.getPackaging())) {
+            Optional<PomVersionChange> thisChange = versionChangeContext.getVersionChanges().stream()
+                    .filter(change -> change.getProject() == pom).findFirst();
+            if (thisChange.isPresent()) {
+                PomVersionChange change = thisChange.get();
+                List<String> modules = pom.getModules();
+                for (String module : modules) {
+                    versionChangeContext.findMetadataByBasedir(new File(project.getBasedir(), module))
+                            .ifPresent(moduleMeta -> {
+                                PomFile modulePom = moduleMeta.getMetadata(PomFile.class);
+                                if (modulePom != null && modulePom.isMutable()
+                                        && POM.equals(modulePom.getPackaging())
+                                        && isVersionEquals(modulePom.getVersion(), change.getVersion())) {
+                                    if (versionChangeContext.addVersionChange(
+                                            new PomVersionChange(modulePom, change.getNewVersion()))) {
+                                        moreChanges.set(true);
+                                    }
+                                }
+                            });
+                }
+            }
+        }
+
+        return moreChanges.get();
     }
 
     @Override
@@ -84,14 +113,8 @@ public class PomManipulator extends AbstractMetadataManipulator {
             String version = Versions.toMavenVersion(change.getVersion());
             String newVersion = Versions.toMavenVersion(change.getNewVersion());
             if (isGavEquals(pom, change)) {
-                String v = pom.getVersion();
-                if (isCiFriendly(v)) {
-                    //applyPropertyChange(pom, version, newVersion);
-                    Matcher m = CI_FRIENDLY_EXPRESSION.matcher(v.trim());
-                    List<String> ciFriendlyProperties = new ArrayList<String>();
-                    while (m.find()) {
-                        ciFriendlyProperties.add(m.group(1));
-                    }
+                List<String> ciFriendlyProperties = PomUtil.getContainedPropertyNames(pom.getRawVersion());
+                if (!ciFriendlyProperties.isEmpty()) {
                     if (ciFriendlyProperties.size() == 1) {
                         //thats actually a simply property change
                         applyPropertyChange(pomName, pom, ciFriendlyProperties.get(0), newVersion);
@@ -115,10 +138,10 @@ public class PomManipulator extends AbstractMetadataManipulator {
                     pom.setVersion(newVersion);
                 }
             } else {
-
                 GAV parent = pom.getParent();
-                if (parent != null && isGavEquals(parent, change) && !isCiFriendly(parent.getVersion())) {
-                    logger.info("  %s//project/version: %s => %s".formatted(pomName, version, newVersion));
+                if (parent != null && isGavEquals(parent, change)
+                        && !PomUtil.containsProperties(parent.getVersion())) {
+                    logger.info("  %s//project/parent/version: %s => %s".formatted(pomName, version, newVersion));
                     parent.setVersion(newVersion);
                 }
             }
@@ -147,10 +170,6 @@ public class PomManipulator extends AbstractMetadataManipulator {
             }
         }
 
-    }
-
-    private boolean isCiFriendly(String v) {
-        return v != null && v.contains("${");
     }
 
     protected void changeDependencyManagement(String pomPath, DependencyManagement dependencyManagment,

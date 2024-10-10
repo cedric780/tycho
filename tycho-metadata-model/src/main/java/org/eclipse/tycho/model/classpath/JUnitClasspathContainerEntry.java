@@ -29,8 +29,8 @@ public interface JUnitClasspathContainerEntry extends ClasspathContainerEntry {
     static final JUnitBundle JUNIT4_PLUGIN = JUnitBundle.of("org.junit", "[4.13.0,5.0.0)",
             "org.apache.servicemix.bundles", "org.apache.servicemix.bundles.junit");
 
-    static final JUnitBundle HAMCREST_CORE_PLUGIN = JUnitBundle.of("org.hamcrest.core", "[1.1.0,2.0.0)",
-            "org.apache.servicemix.bundles", "org.apache.servicemix.bundles.hamcrest");
+    static final JUnitBundle HAMCREST_CORE_PLUGIN = JUnitBundle.of("org.hamcrest", "[2.0.0,3.0.0)", "org.hamcrest",
+            "hamcrest");
 
     static final JUnitBundle JUNIT_JUPITER_API_PLUGIN = JUnitBundle.of("junit-jupiter-api", "[5.0.0,6.0.0)",
             "org.junit.jupiter", "junit-jupiter-api");
@@ -76,6 +76,12 @@ public interface JUnitClasspathContainerEntry extends ClasspathContainerEntry {
             JUNIT_PLATFORM_SUITE_API_PLUGIN, JUNIT_VINTAGE_ENGINE_PLUGIN, JUNIT_OPENTEST4J_PLUGIN,
             JUNIT_APIGUARDIAN_PLUGIN, JUNIT4_PLUGIN, HAMCREST_CORE_PLUGIN);
 
+    static final List<JUnitBundle> JUNIT5_WITHOUT_VINTAGE_PLUGINS = List.of(JUNIT_JUPITER_API_PLUGIN,
+            JUNIT_JUPITER_ENGINE_PLUGIN, JUNIT_JUPITER_MIGRATIONSUPPORT_PLUGIN, JUNIT_JUPITER_PARAMS_PLUGIN,
+            JUNIT_PLATFORM_COMMONS_PLUGIN, JUNIT_PLATFORM_ENGINE_PLUGIN, JUNIT_PLATFORM_LAUNCHER_PLUGIN,
+            JUNIT_PLATFORM_RUNNER_PLUGIN, JUNIT_PLATFORM_SUITE_API_PLUGIN, JUNIT_OPENTEST4J_PLUGIN,
+            JUNIT_APIGUARDIAN_PLUGIN, HAMCREST_CORE_PLUGIN);
+
     /**
      * 
      * @return the JUnit part of the path
@@ -92,5 +98,13 @@ public interface JUnitClasspathContainerEntry extends ClasspathContainerEntry {
     default boolean isTest() {
         return true;
     }
+
+    /**
+     * Checks if for JUnit5 the vintage engine has to be included. This is only meaningful if
+     * {@link #getJUnitSegment()} is equal to {@link #JUNIT5}
+     * 
+     * @return <code>true</code> if vintage is enabled (the default)
+     */
+    boolean isVintage();
 
 }

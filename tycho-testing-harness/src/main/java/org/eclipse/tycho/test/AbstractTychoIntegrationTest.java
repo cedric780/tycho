@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2008, 2022 Sonatype Inc. and others.
+ * Copyright (c) 2008, 2023 Sonatype Inc. and others.
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
  * which accompanies this distribution, and is available at
@@ -14,9 +14,11 @@ package org.eclipse.tycho.test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -32,14 +34,6 @@ import org.junit.Rule;
 import org.junit.rules.TestName;
 
 public abstract class AbstractTychoIntegrationTest {
-
-    /**
-     * Location of m2e.tycho workspace state location.
-     * <p/>
-     * Value must match among tycho-insitu, DevelopmentWorkspaceState and
-     * AbstractTychoIntegrationTest.
-     */
-    private static final String SYSPROP_STATELOCATION = "tychodev.workspace.state";
 
     @Rule
     public TestName name = new TestName();
@@ -90,6 +84,9 @@ public abstract class AbstractTychoIntegrationTest {
 
         Verifier verifier = new Verifier(testDir.getAbsolutePath());
         verifier.setForkJvm(isForked());
+        if (isDisableMirrors()) {
+            verifier.setSystemProperty("eclipse.p2.mirrors", "false");
+        }
         String debug = System.getProperty("tycho.mvnDebug");
         if (debug != null) {
             System.out.println("Preparing to execute Maven in debug mode");
@@ -119,7 +116,7 @@ public abstract class AbstractTychoIntegrationTest {
         tmpDir.mkdirs();
         verifier.addCliOption("-Djava.io.tmpdir=" + tmpDir.getAbsolutePath());
         if (setTargetPlatform) {
-            verifier.addCliOption("-Dtarget-platform=" + getTargetPlatform());
+            verifier.addCliOption("-Dtarget-platform=" + getTargetPlatform().replace("/", "//"));
         }
         if (ignoreLocalArtifacts) {
             verifier.addCliOption("-Dtycho.localArtifacts=ignore");
@@ -134,16 +131,16 @@ public abstract class AbstractTychoIntegrationTest {
             verifier.addCliOption(customOptions);
         }
 
-        if (System.getProperty(SYSPROP_STATELOCATION) != null) {
-            verifier.setForkJvm(false);
-            String m2eresolver = System.getProperty("tychodev-maven.ext.class.path"); // XXX
-            if (m2eresolver != null) {
-                verifier.addCliOption("-Dmaven.ext.class.path=" + m2eresolver);
-            }
-        }
-
         return verifier;
 
+    }
+
+    /**
+     * can be overridden by subclass to explicitly enable mirrors, by default they are disabled.
+     * 
+     */
+    protected boolean isDisableMirrors() {
+        return true;
     }
 
     protected boolean isForked() {
@@ -203,7 +200,10 @@ public abstract class AbstractTychoIntegrationTest {
         DirectoryScanner ds = scan(baseDir, pattern);
         File[] includedFiles = Arrays.stream(ds.getIncludedFiles()).map(file -> new File(baseDir, file))
                 .toArray(File[]::new);
-        assertEquals(baseDir.getAbsolutePath() + "/" + pattern, 1, includedFiles.length);
+        assertEquals(
+                baseDir.getAbsolutePath() + "/" + pattern + System.lineSeparator() + Arrays.stream(includedFiles)
+                        .map(f -> f.getName()).collect(Collectors.joining(System.lineSeparator())),
+                1, includedFiles.length);
         assertTrue(baseDir.getAbsolutePath() + "/" + pattern, includedFiles[0].canRead());
         return includedFiles;
     }
@@ -277,6 +277,19 @@ public abstract class AbstractTychoIntegrationTest {
                 throw new VerificationException("Error in execution: " + collect);
             }
         }
+    }
+
+    protected void assertIncludesJustJ(File productDir) throws IOException {
+        File eclipseIni = assertFileExists(productDir, "**/eclipse.ini")[0];
+        List<String> lines = Files.readAllLines(eclipseIni.toPath());
+        for (int i = 0; i < lines.size(); i++) {
+            if (lines.get(i).equals("-vm")) {
+                String vm = lines.get(i + 1);
+                assertTrue("VM (" + vm + ") is not JustJ!", vm.contains("plugins/org.eclipse.justj.openjdk."));
+                return;
+            }
+        }
+        fail("No VM installed in the product!");
     }
 
 }

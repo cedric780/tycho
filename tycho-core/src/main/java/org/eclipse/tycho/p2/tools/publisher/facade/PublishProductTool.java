@@ -16,7 +16,7 @@ package org.eclipse.tycho.p2.tools.publisher.facade;
 import java.io.File;
 import java.util.List;
 
-import org.eclipse.tycho.core.resolver.shared.DependencySeed;
+import org.eclipse.tycho.DependencySeed;
 
 public interface PublishProductTool {
 
@@ -29,7 +29,9 @@ public interface PublishProductTool {
      *            A folder that contains the native Eclipse launcher binaries
      * @param flavor
      *            The installation flavor the product shall be published for
+     * @param jreName
+     *            name of the JustJ JRE to include or <code>null</code> if none is desired
      * @return a handles to the published product IU
      */
-    List<DependencySeed> publishProduct(File productDefinition, File launcherBinaries, String flavor);
+    List<DependencySeed> publishProduct(File productDefinition, File launcherBinaries, String flavor, String jreName);
 }

@@ -14,16 +14,21 @@ package org.eclipse.tycho.p2.tools.director.shared;
 
 import java.io.File;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.StringJoiner;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
+import org.eclipse.equinox.p2.engine.IPhaseSet;
+import org.eclipse.equinox.p2.metadata.IInstallableUnit;
 import org.eclipse.tycho.ArtifactType;
+import org.eclipse.tycho.DependencySeed;
 import org.eclipse.tycho.TargetEnvironment;
-import org.eclipse.tycho.core.resolver.shared.DependencySeed;
+import org.eclipse.tycho.p2.CommandLineArguments;
+import org.eclipse.tycho.p2maven.tmp.BundlesAction;
+import org.eclipse.tycho.p2tools.copiedfromp2.PhaseSetFactory;
 
 /**
  * Base class for calling a p2 director via command line arguments.
@@ -42,6 +47,9 @@ public abstract class AbstractDirectorApplicationCommand implements DirectorRunt
 
     private File destination;
     private File bundlePool;
+    private IPhaseSet phaseSet;
+    private boolean installSources;
+    private Collection<IInstallableUnit> eeUnits;
 
     @Override
     public final void addMetadataSources(Iterable<URI> metadataRepositories) {
@@ -91,6 +99,11 @@ public abstract class AbstractDirectorApplicationCommand implements DirectorRunt
     }
 
     @Override
+    public void setInstallSources(boolean installSources) {
+        this.installSources = installSources;
+    }
+
+    @Override
     public final void setVerifyOnly(boolean verifyOnly) {
         this.verifyOnly = verifyOnly;
     }
@@ -110,6 +123,18 @@ public abstract class AbstractDirectorApplicationCommand implements DirectorRunt
         this.profileProperties = profileProperties == null ? Map.of() : profileProperties;
     }
 
+    @Override
+    public void setPhaseSet(IPhaseSet phaseSet) {
+        this.phaseSet = phaseSet;
+    }
+
+    public IPhaseSet getPhaseSet() {
+        if (phaseSet == null) {
+            return PhaseSetFactory.createDefaultPhaseSet();
+        }
+        return phaseSet;
+    }
+
     /**
      * Returns the command line arguments for the p2 director application (not including the
      * <code>-application</code> argument).
@@ -121,8 +146,7 @@ public abstract class AbstractDirectorApplicationCommand implements DirectorRunt
         args.addUnlessEmpty("-installIU", unitsToInstall);
         args.add("-destination", destination.getAbsolutePath());
         args.add("-profile", profileName);
-        Map<String, String> props = new HashMap<>(this.profileProperties);
-        props.put("org.eclipse.update.install.features", Boolean.toString(installFeatures));
+        Map<String, String> props = getProfileProperties();
         args.add("-profileProperties", props.entrySet().stream().map(entry -> entry.getKey() + '=' + entry.getValue())
                 .collect(Collectors.joining(",")));
         args.add("-roaming");
@@ -138,30 +162,29 @@ public abstract class AbstractDirectorApplicationCommand implements DirectorRunt
             args.add("-p2.ws", environment.getWs());
             args.add("-p2.arch", environment.getArch());
         }
-
         return args.asList();
     }
 
-    private static class CommandLineArguments {
-        List<String> arguments = new ArrayList<>();
-
-        void add(String flag) {
-            arguments.add(flag);
+    @Override
+    public Map<String, String> getProfileProperties() {
+        Map<String, String> props = new TreeMap<>(this.profileProperties);
+        props.put("org.eclipse.update.install.features", Boolean.toString(installFeatures));
+        if (installSources && props.get(BundlesAction.FILTER_PROPERTY_INSTALL_SOURCE) == null) {
+            props.put(BundlesAction.FILTER_PROPERTY_INSTALL_SOURCE, "true");
         }
-
-        void add(String parameterName, String parameterValue) {
-            arguments.add(parameterName);
-            arguments.add(parameterValue);
-        }
-
-        void addUnlessEmpty(String parameterName, StringJoiner parameterValue) {
-            if (parameterValue.length() > 0) {
-                add(parameterName, parameterValue.toString());
-            }
-        }
-
-        public List<String> asList() {
-            return new ArrayList<>(arguments);
-        }
+        return props;
     }
+
+    @Override
+    public void setEEUnits(Collection<IInstallableUnit> eeUnits) {
+        this.eeUnits = eeUnits;
+    }
+
+    public Collection<IInstallableUnit> getEEUnits() {
+        if (eeUnits == null) {
+            return List.of();
+        }
+        return eeUnits;
+    }
+
 }

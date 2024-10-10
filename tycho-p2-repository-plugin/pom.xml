@@ -43,8 +43,7 @@
 		</dependency>
 		<dependency>
 			<groupId>org.bouncycastle</groupId>
-			<artifactId>bcpg-jdk15on</artifactId>
-			<version>1.70</version>
+			<artifactId>bcpg-jdk18on</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.eclipse.tycho</groupId>
@@ -74,6 +73,14 @@
 						</goals>
 					</execution>
 				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-plugin-plugin</artifactId>
+				<!-- workaround for https://issues.apache.org/jira/browse/MPLUGIN-450 -->
+				<configuration>
+					<goalPrefix>tycho-p2-repository</goalPrefix>
+				</configuration>
 			</plugin>
 		</plugins>
 	</build>
