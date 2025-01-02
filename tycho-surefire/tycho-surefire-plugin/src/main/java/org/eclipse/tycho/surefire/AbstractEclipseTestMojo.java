@@ -23,6 +23,7 @@ import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -109,7 +110,7 @@ public abstract class AbstractEclipseTestMojo extends AbstractTestMojo {
 
     /**
      * <a href=
-     * "https://help.eclipse.org/juno/topic/org.eclipse.platform.doc.isv/reference/misc/runtime-options.html#osgiinstancearea"
+     * "https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.isv/reference/misc/runtime-options.html#osgiinstancearea"
      * >OSGi data directory</a> (<code>osgi.instance.area</code>, aka the workspace) of the Equinox
      * runtime used to execute tests.
      */
@@ -513,7 +514,7 @@ public abstract class AbstractEclipseTestMojo extends AbstractTestMojo {
     /**
      * Additional root IUs to install, only relevant if {@link #testRuntime} is
      * <code>p2Installed</code>.
-     * 
+     *
      * <pre>
      * &lt;install&gt;
      *    &lt;iu&gt;
@@ -529,7 +530,7 @@ public abstract class AbstractEclipseTestMojo extends AbstractTestMojo {
     /**
      * Additional repositories used to install units from, only relevant if {@link #testRuntime} is
      * <code>p2Installed</code>.
-     * 
+     *
      * <pre>
     * &lt;repositories&gt;
     *   &lt;repository&gt;
@@ -537,14 +538,14 @@ public abstract class AbstractEclipseTestMojo extends AbstractTestMojo {
     *   &lt;/repository&gt;
     * &lt;/repositories&gt;
      * </pre>
-     * 
+     *
      */
     @Parameter(name = "repositories")
     private List<Repository> repositories;
 
     /**
      * p2 <a href=
-     * "https://help.eclipse.org/kepler/index.jsp?topic=%2Forg.eclipse.platform.doc.isv%2Fguide%2Fp2_director.html"
+     * "https://help.eclipse.org/latest/index.jsp?topic=%2Forg.eclipse.platform.doc.isv%2Fguide%2Fp2_director.html"
      * >profile</a> name of the installation under test.
      *
      * Only relevant if {@link #testRuntime} is <code>p2Installed</code>. If tests are installed on
@@ -966,7 +967,7 @@ public abstract class AbstractEclipseTestMojo extends AbstractTestMojo {
         Properties p = new Properties();
         p.putAll(propertiesMap);
         try {
-            try (BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(file))) {
+            try (OutputStream out = new BufferedOutputStream(new FileOutputStream(file))) {
                 p.store(out, null);
             }
         } catch (IOException e) {

@@ -23,7 +23,7 @@
 	<name>Tycho Core</name>
 	<description>Core Tycho components</description>
 	<properties>
-		<jetty.version>12.0.14</jetty.version>
+		<jetty.version>12.0.16</jetty.version>
 	</properties>
 
 	<build>
@@ -322,7 +322,7 @@
 		<dependency>
 		    <groupId>org.eclipse.pde</groupId>
 		    <artifactId>org.eclipse.pde.core</artifactId>
-		    <version>3.19.0</version>
+		    <version>3.20.0</version>
 		    <scope>test</scope>
 		    <exclusions>
 				<exclusion>

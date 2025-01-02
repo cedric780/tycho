@@ -14,10 +14,12 @@
  *******************************************************************************/
 package org.eclipse.tycho.source;
 
+import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -144,7 +146,7 @@ public class SourceFeatureMojo extends AbstractMojo {
 
     /**
      * Use this to explicitly set the <a href=
-     * "https://help.eclipse.org/juno/index.jsp?topic=%2Forg.eclipse.pde.doc.user%2Fguide%2Ftools%2Feditors%2Ffeature_editor%2Ffeature_editor.htm"
+     * "https://help.eclipse.org/latest/index.jsp?topic=%2Forg.eclipse.pde.doc.user%2Fguide%2Ftools%2Feditors%2Ffeature_editor%2Ffeature_editor.htm"
      * > branding plugin attribute</a> of the generated source feature (overrides
      * {@link #reuseBrandingPlugin}).
      */
@@ -190,6 +192,15 @@ public class SourceFeatureMojo extends AbstractMojo {
 
     @Parameter(property = "session", readonly = true)
     private MavenSession session;
+
+    /**
+     * Timestamp for reproducible output archive entries, either formatted as ISO 8601 extended
+     * offset date-time (e.g. in UTC such as '2011-12-03T10:15:30Z' or with an offset
+     * '2019-10-05T20:37:42+06:00'), or as an int representing seconds since the epoch (like
+     * <a href= "https://reproducible-builds.org/docs/source-date-epoch/">SOURCE_DATE_EPOCH</a>).
+     */
+    @Parameter(defaultValue = "${project.build.outputTimestamp}")
+    private String outputTimestamp;
 
     private final Set<String> excludedPlugins = new HashSet<>();
 
@@ -241,6 +252,8 @@ public class SourceFeatureMojo extends AbstractMojo {
                 writeProperties(mergedSourceFeatureProps, getMergedSourceFeaturePropertiesFile());
                 MavenArchiver archiver = new MavenArchiver();
                 archiver.setArchiver(jarArchiver);
+                // configure for Reproducible Builds based on outputTimestamp value
+                archiver.configureReproducibleBuild(outputTimestamp);
                 File outputJarFile = getOutputJarFile();
                 archiver.setOutputFile(outputJarFile);
                 File template = new File(project.getBasedir(), FEATURE_TEMPLATE_DIR);
@@ -348,7 +361,7 @@ public class SourceFeatureMojo extends AbstractMojo {
 
     private static void writeProperties(Properties props, File propertiesFile) throws IOException {
         propertiesFile.getParentFile().mkdirs();
-        try (FileOutputStream out = new FileOutputStream(propertiesFile)) {
+        try (OutputStream out = new BufferedOutputStream(new FileOutputStream(propertiesFile))) {
             props.store(out, "");
         }
     }

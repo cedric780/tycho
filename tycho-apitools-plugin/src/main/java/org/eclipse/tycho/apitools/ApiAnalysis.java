@@ -31,7 +31,10 @@ import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.concurrent.Callable;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
+import org.eclipse.core.internal.resources.CharsetDeltaJob;
 import org.eclipse.core.resources.ICommand;
 import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IProject;
@@ -94,6 +97,9 @@ import org.osgi.framework.FrameworkUtil;
  */
 public class ApiAnalysis implements Serializable, Callable<ApiAnalysisResult> {
 
+	private static final Pattern COMPONENT_DISPOSED_ERROR = Pattern
+			.compile("Component '(.+)' in the baseline '(.+)' is disposed");
+
 	private Collection<String> baselineBundles;
 	private Collection<String> targetBundles;
 	private String baselineName;
@@ -103,10 +109,12 @@ public class ApiAnalysis implements Serializable, Callable<ApiAnalysisResult> {
 	private String apiPreferences;
 	private String binaryArtifact;
 	private String outputDir;
+	private boolean runAsJob;
 
 	ApiAnalysis(Collection<Path> baselineBundles, Collection<Path> dependencyBundles, String baselineName,
 			Path apiFilterFile, Path apiPreferences, Path projectDir, boolean debug, Path binaryArtifact,
-			Path outputDir) {
+			Path outputDir, boolean runAsJob) {
+		this.runAsJob = runAsJob;
 		this.targetBundles = dependencyBundles.stream().map(ApiAnalysis::pathAsString).toList();
 		this.baselineBundles = baselineBundles.stream().map(ApiAnalysis::pathAsString).toList();
 		this.baselineName = baselineName;
@@ -162,52 +170,94 @@ public class ApiAnalysis implements Serializable, Callable<ApiAnalysisResult> {
 		deleteAllProjects();
 		IPath projectPath = IPath.fromOSString(projectDir);
 		IProject project = getProject(projectPath);
-		ApiAnalysisResult result = new ApiAnalysisResult(getVersion());
-		WorkspaceJob job = new WorkspaceJob("Tycho API Analysis") {
-
-			@Override
-			public IStatus runInWorkspace(IProgressMonitor monitor) {
-				try {
-					BundleComponent projectComponent = getApiComponent(project, projectPath);
-					IApiBaseline baseline = createBaseline(baselineBundles, baselineName + " - baseline");
-					ResolverError[] resolverErrors = projectComponent.getErrors();
-					if (resolverErrors != null && resolverErrors.length > 0) {
-						for (ResolverError error : resolverErrors) {
-							result.addResolverError(error);
-						}
-					}
-					IApiFilterStore filterStore = getApiFilterStore(projectComponent);
-					Properties preferences = getPreferences();
-					BaseApiAnalyzer analyzer = new BaseApiAnalyzer();
-					try {
-						analyzer.setContinueOnResolverError(true);
-						analyzer.analyzeComponent(null, filterStore, preferences, baseline, projectComponent,
-								new BuildContext(), new NullProgressMonitor());
-						IApiProblem[] problems = analyzer.getProblems();
-						for (IApiProblem problem : problems) {
-							result.addProblem(problem, project);
-							debug(String.valueOf(problem));
-						}
-					} finally {
-						analyzer.dispose();
-						ResourcesPlugin.getWorkspace().save(true, new NullProgressMonitor());
-					}
-				} catch (Exception e) {
-					return Status.error("Api Analysis failed", e);
+		jobManager.join(CharsetDeltaJob.FAMILY_CHARSET_DELTA, null);
+		jobManager.join(org.eclipse.pde.internal.core.PluginModelManager.class, null);
+		RuntimeException exception = new RuntimeException("Can't get API result due to API application error(s)");
+		String version = getVersion();
+		for (int i = 0; i < 5; i++) {
+			ApiAnalysisResult result = new ApiAnalysisResult(version);
+			IStatus status = runAnalysis(projectPath, project, result);
+			if (!status.isOK() && status.getException() instanceof Exception error) {
+				if (isRecoverable(error)) {
+					exception.addSuppressed(error);
+					TimeUnit.SECONDS.sleep(10);
+					continue;
 				}
-				return Status.OK_STATUS;
+				throw error;
 			}
-		};
-		job.setRule(ResourcesPlugin.getWorkspace().getRoot());
-		job.schedule();
-		job.join();
-		IStatus status = job.getResult();
+			return result;
+		}
+		throw exception;
+	}
+
+	private boolean isRecoverable(Throwable throwable) {
+		if (throwable == null) {
+			return false;
+		}
+		if (throwable instanceof CoreException) {
+			String message = throwable.getMessage();
+			if (message != null && COMPONENT_DISPOSED_ERROR.matcher(message).find()) {
+				debug("Recoverable error found: " + message + " retry analysis again...");
+				return true;
+			}
+		}
+		return isRecoverable(throwable.getCause());
+	}
+
+	private IStatus runAnalysis(IPath projectPath, IProject project, ApiAnalysisResult result)
+			throws InterruptedException {
+		IStatus status;
+		if (runAsJob) {
+			WorkspaceJob job = new WorkspaceJob("Tycho API Analysis") {
+
+				@Override
+				public IStatus runInWorkspace(IProgressMonitor monitor) {
+					return performAPIAnalysis(project, projectPath, result);
+				}
+
+			};
+			job.setRule(ResourcesPlugin.getWorkspace().getRoot());
+			job.schedule();
+			job.join();
+			status = job.getResult();
+		} else {
+			status = performAPIAnalysis(project, projectPath, result);
+		}
 		JRTUtil.reset(); // reclaim space due to loaded multiple JRTUtil should better be fixed to not
 							// use that much space
-		if (!status.isOK() && status.getException() instanceof Exception error) {
-			throw error;
+		return status;
+	}
+
+	private IStatus performAPIAnalysis(IProject project, IPath projectPath, ApiAnalysisResult result) {
+		try {
+			BundleComponent projectComponent = getApiComponent(project, projectPath);
+			IApiBaseline baseline = createBaseline(baselineBundles, baselineName + " - baseline");
+			ResolverError[] resolverErrors = projectComponent.getErrors();
+			if (resolverErrors != null && resolverErrors.length > 0) {
+				for (ResolverError error : resolverErrors) {
+					result.addResolverError(error);
+				}
+			}
+			IApiFilterStore filterStore = getApiFilterStore(projectComponent);
+			Properties preferences = getPreferences();
+			BaseApiAnalyzer analyzer = new BaseApiAnalyzer();
+			try {
+				analyzer.setContinueOnResolverError(true);
+				analyzer.analyzeComponent(null, filterStore, preferences, baseline, projectComponent,
+						new BuildContext(), new NullProgressMonitor());
+				IApiProblem[] problems = analyzer.getProblems();
+				for (IApiProblem problem : problems) {
+					result.addProblem(problem, project);
+					debug(String.valueOf(problem));
+				}
+			} finally {
+				analyzer.dispose();
+				ResourcesPlugin.getWorkspace().save(true, new NullProgressMonitor());
+			}
+		} catch (Exception e) {
+			return Status.error("Api Analysis failed", e);
 		}
-		return result;
+		return Status.OK_STATUS;
 	}
 
 	private String getVersion() {
@@ -437,8 +487,8 @@ public class ApiAnalysis implements Serializable, Callable<ApiAnalysisResult> {
 		IWorkspaceDescription desc = workspace.getDescription();
 		desc.setAutoBuilding(false);
 		workspace.setDescription(desc);
-		PDECore.getDefault().getPreferencesManager().setValue(ICoreConstants.DISABLE_API_ANALYSIS_BUILDER, false);
-		PDECore.getDefault().getPreferencesManager().setValue(ICoreConstants.RUN_API_ANALYSIS_AS_JOB, false);
+		PDECore.getDefault().getPreferencesManager().setValue(ICoreConstants.DISABLE_API_ANALYSIS_BUILDER, true);
+		PDECore.getDefault().getPreferencesManager().setValue(ICoreConstants.RUN_API_ANALYSIS_AS_JOB, runAsJob);
 	}
 
 	private Properties getPreferences() throws IOException {

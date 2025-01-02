@@ -12,15 +12,17 @@
  *******************************************************************************/
 package org.eclipse.tycho.plugins.p2.repository;
 
+import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -33,6 +35,7 @@ import java.util.stream.Stream;
 import java.util.stream.Stream.Builder;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.maven.archiver.MavenArchiver;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.handler.DefaultArtifactHandler;
 import org.apache.maven.artifact.resolver.ArtifactResolutionRequest;
@@ -85,7 +88,7 @@ import org.eclipse.tycho.p2maven.tools.TychoFeaturesAndBundlesPublisherApplicati
  * <li>The metadata of the page is attached to the current project with type=zip and
  * classifier=p2site and could be deployed using standard maven techniques</li>
  * </ul>
- * 
+ *
  * <b>Please note:</b> Only valid OSGi bundles are included, there is no way to automatically wrap
  * plain jars and they are silently ignored. This is intentional, as the goal of a p2-maven-site is
  * to use exactly the same artifact that is deployed in the maven repository.
@@ -93,7 +96,7 @@ import org.eclipse.tycho.p2maven.tools.TychoFeaturesAndBundlesPublisherApplicati
  * <p>
  * The produced p2-maven-site can then be consumed by Tycho or PDE targets (m2eclipse is required
  * for this), in the following way: A tycho-repository section:
- * 
+ *
  * <pre>
     &lt;repository>
     &lt;id>my-p2-maven-site</id>
@@ -101,9 +104,9 @@ import org.eclipse.tycho.p2maven.tools.TychoFeaturesAndBundlesPublisherApplicati
         &lt;layout>p2</layout>
     &lt;/repository>
  * </pre>
- * 
+ *
  * A target location of type software-site:
- * 
+ *
  * <pre>
  *  &lt;location includeAllPlatforms="false" includeConfigurePhase="true" includeMode="planner" includeSource="true" type="InstallableUnit">
         &lt;repository location="mvn:[groupId]:[artifactId]:[version]:zip:p2site"/>
@@ -174,6 +177,15 @@ public class MavenP2SiteMojo extends AbstractMojo {
     @Parameter(defaultValue = "${project.build.directory}/repository")
     private File destination;
 
+    /**
+     * Timestamp for reproducible output archive entries, either formatted as ISO 8601 extended
+     * offset date-time (e.g. in UTC such as '2011-12-03T10:15:30Z' or with an offset
+     * '2019-10-05T20:37:42+06:00'), or as an int representing seconds since the epoch (like
+     * <a href="https://reproducible-builds.org/docs/source-date-epoch/">SOURCE_DATE_EPOCH</a>).
+     */
+    @Parameter(defaultValue = "${project.build.outputTimestamp}")
+    private String outputTimestamp;
+
     @Component
     private Logger logger;
     @Component
@@ -190,7 +202,7 @@ public class MavenP2SiteMojo extends AbstractMojo {
 
     /**
      * The output directory of the jar file
-     * 
+     *
      * By default this is the Maven "target/" directory.
      */
     @Parameter(property = "project.build.directory", required = true)
@@ -271,7 +283,7 @@ public class MavenP2SiteMojo extends AbstractMojo {
             try {
                 File categoryGenFile = File.createTempFile("category", ".xml");
                 try (PrintWriter writer = new PrintWriter(
-                        new OutputStreamWriter(new FileOutputStream(categoryGenFile), StandardCharsets.UTF_8))) {
+                        Files.newBufferedWriter(categoryGenFile.toPath(), StandardCharsets.UTF_8))) {
                     writer.println("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
                     writer.println("<site>");
                     writer.println("<category-def name=\"bundles\" label=\"" + categoryName + "\"/>");
@@ -309,7 +321,7 @@ public class MavenP2SiteMojo extends AbstractMojo {
                                 List<Exception> errors = new ArrayList<>();
                                 for (String keyServer : keyServers) {
                                     try {
-                                        PGPPublicKeyRing publicKey = pgpService.getPublicKey(keyID, keyServer, session,
+                                        PGPPublicKeyRing publicKey = pgpService.getPublicKey(keyID, keyServer,
                                                 keyServerRetry);
                                         if (publicKey != null) {
                                             publicKeys.put(keyID, publicKey);
@@ -344,7 +356,8 @@ public class MavenP2SiteMojo extends AbstractMojo {
                 publicKeysFile = File.createTempFile("publicKeys", ".pgp");
                 publicKeysFile.deleteOnExit();
                 PGPPublicKeyRingCollection collection = new PGPPublicKeyRingCollection(publicKeys.values());
-                try (OutputStream out = new ArmoredOutputStream(new FileOutputStream(publicKeysFile))) {
+                try (OutputStream out = new ArmoredOutputStream(
+                        new BufferedOutputStream(new FileOutputStream(publicKeysFile)))) {
                     collection.encode(out);
                 }
                 arguments.add("-publicKeys");
@@ -397,6 +410,9 @@ public class MavenP2SiteMojo extends AbstractMojo {
             throw new MojoFailureException("P2 publisher return code was " + result);
         }
         ZipArchiver archiver = new ZipArchiver();
+        // configure for Reproducible Builds based on outputTimestamp value
+        MavenArchiver.parseBuildOutputTimestamp(outputTimestamp).map(FileTime::from)
+                .ifPresent(modifiedTime -> archiver.configureReproducibleBuild(modifiedTime));
         File destFile = new File(buildDirectory, "p2-site.zip");
         archiver.setDestFile(destFile);
         archiver.addFileSet(new DefaultFileSet(destination));
@@ -468,7 +484,9 @@ public class MavenP2SiteMojo extends AbstractMojo {
             addProvidesAndProperty(properties, TychoConstants.PROP_EXTENSION, artifact.getType(), cnt++);
             addProvidesAndProperty(properties, TychoConstants.PROP_CLASSIFIER, artifact.getClassifier(), cnt++);
             addProvidesAndProperty(properties, "maven-scope", artifact.getScope(), cnt++);
-            properties.store(new FileOutputStream(p2), null);
+            try (OutputStream os = new BufferedOutputStream(new FileOutputStream(p2))) {
+                properties.store(os, null);
+            }
             return p2;
         } catch (IOException e) {
             throw new MojoExecutionException("failed to generate p2.inf", e);
@@ -476,7 +494,7 @@ public class MavenP2SiteMojo extends AbstractMojo {
     }
 
     private void addProvidesAndProperty(Properties properties, String key, String value, int i) {
-        //see https://help.eclipse.org/2021-03/index.jsp?topic=%2Forg.eclipse.platform.doc.isv%2Fguide%2Fp2_customizing_metadata.html
+        //see https://help.eclipse.org/latest/index.jsp?topic=%2Forg.eclipse.platform.doc.isv%2Fguide%2Fp2_customizing_metadata.html
         addProvides(properties, key.replace('-', '.'), value, null, i);
         addProperty(properties, key, value, i);
     }

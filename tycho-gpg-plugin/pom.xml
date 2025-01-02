@@ -27,6 +27,10 @@
 	<dependencies>
 		<dependency>
 			<groupId>org.apache.maven</groupId>
+			<artifactId>maven-core</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.maven</groupId>
 			<artifactId>maven-plugin-api</artifactId>
 		</dependency>
 		<dependency>
@@ -44,12 +48,12 @@
 		<dependency>
 			<groupId>org.apache.maven.plugins</groupId>
 			<artifactId>maven-gpg-plugin</artifactId>
-			<version>3.1.0</version>
+			<version>3.2.7</version>
 		</dependency>
 		<dependency>
 			<groupId>org.eclipse.platform</groupId>
 			<artifactId>org.eclipse.equinox.p2.artifact.repository</artifactId>
-			<version>1.5.400</version>
+			<version>1.5.500</version>
 		</dependency>
 		<dependency>
 			<groupId>org.eclipse.platform</groupId>
@@ -59,6 +63,11 @@
 			<groupId>org.eclipse.tycho</groupId>
 			<artifactId>tycho-core</artifactId>
 			<version>${project.version}</version>
+		</dependency>
+
+		<dependency>
+			<groupId>org.apache.maven</groupId>
+			<artifactId>maven-archiver</artifactId>
 		</dependency>
 	</dependencies>
 	

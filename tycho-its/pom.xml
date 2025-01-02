@@ -160,17 +160,17 @@
 		<dependency>
 			<groupId>org.junit.jupiter</groupId>
 			<artifactId>junit-jupiter</artifactId>
-			<version>5.11.2</version>
+			<version>${junit5.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.junit.vintage</groupId>
 			<artifactId>junit-vintage-engine</artifactId>
-			<version>5.11.2</version>
+			<version>${junit5.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.junit.platform</groupId>
 			<artifactId>junit-platform-launcher</artifactId>
-			<version>1.11.2</version>
+			<version>${junit5.platform.version}</version>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
@@ -187,7 +187,7 @@
 		<dependency>
 			<groupId>org.eclipse.platform</groupId>
 			<artifactId>org.eclipse.jface</artifactId>
-			<version>3.35.0</version>
+			<version>3.35.100</version>
 			<scope>test</scope>
 		</dependency>
 
@@ -217,7 +217,7 @@
 		<dependency>
 			<groupId>org.cyclonedx</groupId>
 			<artifactId>cyclonedx-core-java</artifactId>
-			<version>9.0.5</version>
+			<version>10.1.0</version>
 		</dependency>
 
 		<!-- artifacts to be tested -->

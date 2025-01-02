@@ -17,9 +17,8 @@ package org.eclipse.tycho.core.maven;
 
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.OutputStreamWriter;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -64,6 +63,7 @@ import org.eclipse.tycho.core.osgitools.BundleReader;
 import org.eclipse.tycho.core.osgitools.DefaultBundleReader;
 import org.eclipse.tycho.p2maven.MavenProjectDependencyProcessor;
 import org.eclipse.tycho.p2maven.MavenProjectDependencyProcessor.ProjectDependencyClosure;
+import org.eclipse.tycho.p2maven.transport.TransportCacheConfig;
 import org.eclipse.tycho.resolver.TychoResolver;
 import org.eclipse.tycho.version.TychoVersion;
 
@@ -104,6 +104,9 @@ public class TychoMavenLifecycleParticipant extends AbstractMavenLifecyclePartic
     @Requirement
     TychoProjectManager projectManager;
 
+    @Requirement
+    TransportCacheConfig transportCacheConfig;
+
     public TychoMavenLifecycleParticipant() {
         // needed for plexus
     }
@@ -129,7 +132,7 @@ public class TychoMavenLifecycleParticipant extends AbstractMavenLifecyclePartic
         try {
             validate(projects);
 
-            // setting this system property to let EF figure out where the traffic 
+            // setting this system property to let EF figure out where the traffic
             // is coming from (#467418)
             System.setProperty(P2_USER_AGENT_KEY, P2_USER_AGENT_VALUE + TychoVersion.getTychoVersion());
 
@@ -163,8 +166,8 @@ public class TychoMavenLifecycleParticipant extends AbstractMavenLifecyclePartic
                                 Set<MavenProject> visited = new HashSet<>();
                                 modelWriter.write(new File(project.getBasedir(), "pom-model.xml"), Map.of(),
                                         project.getModel());
-                                try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
-                                        new FileOutputStream(new File(project.getBasedir(), "requirements.txt"))))) {
+                                try (BufferedWriter writer = Files.newBufferedWriter(
+                                        new File(project.getBasedir(), "requirements.txt").toPath())) {
                                     writer.write(project.getId() + ":\r\n");
                                     dumpProjectRequirements(project, writer, closure, dependencyProjects, "\t",
                                             visited);
@@ -179,7 +182,7 @@ public class TychoMavenLifecycleParticipant extends AbstractMavenLifecyclePartic
             }
         } catch (BuildFailureException e) {
             // build failure is not an internal (unexpected) error, so avoid printing a stack
-            // trace by wrapping it in MavenExecutionException   
+            // trace by wrapping it in MavenExecutionException
             throw new MavenExecutionException(e.getMessage(), e);
         }
         buildListeners.notifyBuildStart(session);
@@ -375,8 +378,7 @@ public class TychoMavenLifecycleParticipant extends AbstractMavenLifecyclePartic
 
     private void configureComponents(MavenSession session) {
         // TODO why does the bundle reader need to cache stuff in the local maven repository?
-        File localRepository = new File(session.getLocalRepository().getBasedir());
-        ((DefaultBundleReader) bundleReader).setLocationRepository(localRepository);
+        ((DefaultBundleReader) bundleReader).setCacheLocation(transportCacheConfig.getCacheLocation());
     }
 
 }

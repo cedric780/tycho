@@ -16,12 +16,14 @@ package org.eclipse.tycho.plugins.p2.director;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.attribute.FileTime;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import org.apache.maven.archiver.MavenArchiver;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Component;
@@ -125,6 +127,24 @@ public final class ProductArchiverMojo extends AbstractProductMojo {
     @Parameter
     private boolean parallel;
 
+    /**
+     * Controls if for {@code .tar.gz} archives the creation-time is stored as
+     * {@code LIBARCHIVE.creationtime } attribute in each entry. Currently {@code GNU tar} does not
+     * support that attributes and emits warnings about the {@code unknown extended header keyword
+     * 'LIBARCHIVE.creationtime'} when extracting such archive.
+     */
+    @Parameter(defaultValue = "false")
+    private boolean storeCreationTime;
+
+    /**
+     * Timestamp for reproducible output archive entries, either formatted as ISO 8601 extended
+     * offset date-time (e.g. in UTC such as '2011-12-03T10:15:30Z' or with an offset
+     * '2019-10-05T20:37:42+06:00'), or as an int representing seconds since the epoch (like
+     * <a href="https://reproducible-builds.org/docs/source-date-epoch/">SOURCE_DATE_EPOCH</a>).
+     */
+    @Parameter(defaultValue = "${project.build.outputTimestamp}")
+    private String outputTimestamp;
+
     @Component
     private MavenProjectHelper helper;
 
@@ -214,6 +234,9 @@ public final class ProductArchiverMojo extends AbstractProductMojo {
                 createCommonsCompressTarGz(productArchive, sourceDir);
             } else {
                 Archiver archiver = productArchiver.get();
+                // configure for Reproducible Builds based on outputTimestamp value
+                MavenArchiver.parseBuildOutputTimestamp(outputTimestamp).map(FileTime::from)
+                        .ifPresent(modifiedTime -> archiver.configureReproducibleBuild(modifiedTime));
                 archiver.setDestFile(productArchive);
                 DefaultFileSet fileSet = new DefaultFileSet(sourceDir);
                 fileSet.setUsingDefaultExcludes(false);
@@ -230,7 +253,11 @@ public final class ProductArchiverMojo extends AbstractProductMojo {
 
     private void createCommonsCompressTarGz(File productArchive, File sourceDir) throws IOException {
         TarGzArchiver archiver = new TarGzArchiver();
+        archiver.setStoreCreationTimeAttribute(storeCreationTime);
         archiver.setLog(getLog());
+        // configure for Reproducible Builds based on outputTimestamp value
+        MavenArchiver.parseBuildOutputTimestamp(outputTimestamp).map(FileTime::from)
+                .ifPresent(modifiedTime -> archiver.configureReproducibleBuild(modifiedTime));
         archiver.addDirectory(sourceDir);
         archiver.setDestFile(productArchive);
         archiver.createArchive();
